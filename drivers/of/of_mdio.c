@@ -7,7 +7,7 @@
  * This file provides helper functions for extracting PHY device information
  * out of the OpenFirmware device tree and using it to populate an mii_bus.
  */
-
+#define DEBUG   1
 #include <linux/kernel.h>
 #include <linux/device.h>
 #include <linux/netdevice.h>
@@ -328,12 +328,18 @@ struct phy_device *of_phy_connect(struct net_device *dev,
 	struct phy_device *phy = of_phy_find_device(phy_np);
 	int ret;
 
-	if (!phy)
+    if (!phy) {
+        //printk(KERN_ERR "phy is NULL, id:%d\n", phy_np->dev_id);
+        printk(KERN_ERR "phy is NULL, id\n");
 		return NULL;
+    }
 
 	phy->dev_flags = flags;
 
 	ret = phy_connect_direct(dev, phy, hndlr, iface);
+    if(!ret) {
+        printk(KERN_ERR "phy is NULL\n");
+    }
 
 	/* refcount is held by phy_connect_direct() on success */
 	put_device(&phy->mdio.dev);

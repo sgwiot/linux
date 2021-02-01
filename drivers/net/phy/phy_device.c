@@ -965,16 +965,30 @@ int phy_connect_direct(struct net_device *dev, struct phy_device *phydev,
 {
 	int rc;
 
-	if (!dev)
+    if (!dev) {
+        printk(KERN_ERR "NETDEBUG: dev error, null, ");
 		return -EINVAL;
+    }
 
 	rc = phy_attach_direct(dev, phydev, phydev->dev_flags, interface);
-	if (rc)
+    if (rc) {
+        printk(KERN_ERR "NETDEBUG: rc error");
 		return rc;
+    }
+    printk(KERN_ERR "NETDEBUG: rc OK");
 
 	phy_prepare_link(phydev, handler);
-	if (phy_interrupt_is_valid(phydev))
+    if (phy_interrupt_is_valid(phydev)) {
 		phy_request_interrupt(phydev);
+    } else {
+        printk(KERN_ERR "NETDEBUG: isvalid error");
+
+    }
+    if(phydev->irq != PHY_POLL && phydev->irq != PHY_IGNORE_INTERRUPT) {
+        printk(KERN_ERR "NETDEBUG: Interrupt ERROR:%d",phydev->irq);
+    }
+    printk(KERN_ERR "NETDEBUG: Interrupt type:%d",phydev->irq);
+
 
 	return 0;
 }
@@ -1313,6 +1327,7 @@ int phy_attach_direct(struct net_device *dev, struct phy_device *phydev,
 	return err;
 
 error:
+    phydev_err(phydev, "NETDEBUG: err:%d\n",err);
 	/* phy_detach() does all of the cleanup below */
 	phy_detach(phydev);
 	return err;
@@ -1323,6 +1338,7 @@ error_put_device:
 	put_device(d);
 	if (ndev_owner != bus->owner)
 		module_put(bus->owner);
+    phydev_err(phydev, "NETDEBUG: err:%d\n",err);
 	return err;
 }
 EXPORT_SYMBOL(phy_attach_direct);

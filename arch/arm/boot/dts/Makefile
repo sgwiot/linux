@@ -600,6 +600,9 @@ dtb-$(CONFIG_SOC_IMX6SX) += \
 	imx6sx-udoo-neo-extended.dtb \
 	imx6sx-udoo-neo-full.dtb
 dtb-$(CONFIG_SOC_IMX6UL) += \
+	sgw.dtb \
+	sgw_dev.dtb \
+	sgw_net.dtb \
 	imx6ul-14x14-evk.dtb \
 	imx6ul-14x14-evk-csi.dtb \
 	imx6ul-14x14-evk-emmc.dtb \
@@ -612,7 +615,6 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ul-9x9-evk-ldo.dtb \
 	imx6ul-9x9-evk-btwifi.dtb \
 	imx6ul-9x9-evk-btwifi-oob.dtb \
-	imx6ul-ccimx6ulsbcexpress.dtb \
 	imx6ul-ccimx6ulsbcpro.dtb \
 	imx6ul-geam.dtb \
 	imx6ul-isiot-emmc.dtb \

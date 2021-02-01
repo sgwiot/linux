@@ -804,13 +804,16 @@ void phy_request_interrupt(struct phy_device *phydev)
 		phydev_warn(phydev, "Error %d requesting IRQ %d, falling back to polling\n",
 			    err, phydev->irq);
 		phydev->irq = PHY_POLL;
+            printk(KERN_ERR "NETDEBUG: request irq Failed\n");
 	} else {
 		if (phy_enable_interrupts(phydev)) {
 			phydev_warn(phydev, "Can't enable interrupt, falling back to polling\n");
 			phy_free_interrupt(phydev);
 			phydev->irq = PHY_POLL;
+            printk(KERN_ERR "NETDEBUG: enable irq Failed\n");
 		}
 	}
+    printk(KERN_ERR "NETDEBUG: enable irq OK\n");
 }
 EXPORT_SYMBOL(phy_request_interrupt);
 

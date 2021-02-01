@@ -1894,9 +1894,17 @@ static int fec_enet_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
 	int ret = 0, frame_start, frame_addr, frame_op;
 	bool is_c45 = !!(regnum & MII_ADDR_C45);
 
+    //Ref:
+    //  https://github.com/patrykk/linux-udoo/commit/63c16a8ebd08c1cc0df07c9d6c2c5c8849eb0fe2
 	ret = pm_runtime_get_sync(dev);
-	if (ret < 0)
-		return ret;
+	//if (ret < 0)
+		//return ret;
+    if(IS_ERR_VALUE(ret)) {
+        netdev_err(fep->netdev, "NETDEBUG: get sync error eth \n");
+        return ret;
+    } else {
+        ret = 0;
+    }
 
 	reinit_completion(&fep->mdio_done);
 
@@ -1964,7 +1972,8 @@ static int fec_enet_mdio_write(struct mii_bus *bus, int mii_id, int regnum,
 	bool is_c45 = !!(regnum & MII_ADDR_C45);
 
 	ret = pm_runtime_get_sync(dev);
-	if (ret < 0)
+	//if (ret < 0)
+	if (IS_ERR_VALUE(ret))
 		return ret;
 	else
 		ret = 0;
@@ -2102,6 +2111,7 @@ static int fec_enet_mii_probe(struct net_device *ndev)
 	int phy_id;
 	int dev_id = fep->dev_id;
 
+    netdev_err(ndev, "NETDEBUG: dev_id=%d, name=%s, busid=%s\n",dev_id, phy_name, mdio_bus_id);
 	if (fep->phy_node) {
 		phy_dev = of_phy_connect(ndev, fep->phy_node,
 					 &fec_enet_adjust_link, 0,
@@ -3137,7 +3147,8 @@ fec_enet_open(struct net_device *ndev)
 	bool reset_again;
 
 	ret = pm_runtime_get_sync(&fep->pdev->dev);
-	if (ret < 0)
+	//if (ret < 0)
+	if (IS_ERR_VALUE(ret))
 		return ret;
 
 	pinctrl_pm_select_default_state(&fep->pdev->dev);

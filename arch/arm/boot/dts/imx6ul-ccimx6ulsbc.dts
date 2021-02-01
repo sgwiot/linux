@@ -71,7 +71,7 @@
 
 /* CAN1 (multiplexed with UART3 RTS/CTS) */
 &can1 {
-	status = "okay";
+	status = "disable";
 };
 
 /* CAN2 (multiplexed with UART2 RTS/CTS) */
@@ -204,8 +204,8 @@
 &uart2 {
 	/* RTS/CTS lines multiplexed with CAN2 */
 	pinctrl-0 = <&pinctrl_uart2_4wires>;
-	uart-has-rtscts;
-	status = "okay";
+	//uart-has-rtscts;
+	status = "disable";
 };
 
 /* UART3 */
@@ -213,12 +213,12 @@
 	/* RTS/CTS lines multiplexed with CAN1 */
 	// pinctrl-0 = <&pinctrl_uart3_4wires>;
 	// uart-has-rtscts;
-	status = "okay";
+	status = "disable";
 };
 
 /* UART5 (Console) */
 &uart5 {
-	status = "okay";
+	status = "disable";
 };
 
 &usbotg1 {
@@ -233,7 +233,7 @@
 &usdhc2 {
 	pinctrl-assert-gpios = <&gpio5 1 GPIO_ACTIVE_LOW>;
 	broken-cd;	/* no carrier detect line (use polling) */
-	status = "okay";
+	status = "disable";
 };
 
 /* USDHC2 (eMMC, conflicts with microSD) */
