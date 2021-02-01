@@ -31,6 +31,7 @@
 #include <linux/types.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/pm_domain.h>
+#include <linux/pm_runtime.h>
 
 #define	DRIVER_NAME	"mxc_emvsim"
 
@@ -1440,7 +1441,11 @@ copy_data:
 			break;
 		}
 
-		emvsim_check_baud_rate(&emvsim->baud_rate);
+		ret = emvsim_check_baud_rate(&emvsim->baud_rate);
+		if (ret) {
+			dev_err(emvsim_dev.parent, "Invalid baud rate value\n");
+			errval = ret;
+		}
 
 		break;
 	case SIM_IOCTL_WAIT:
@@ -1485,12 +1490,11 @@ static int emvsim_open(struct inode *inode, struct file *file)
 		return errval;
 	}
 
-	if (!emvsim->open_cnt) {
-		clk_prepare_enable(emvsim->ipg);
-		clk_prepare_enable(emvsim->clk);
-	}
-
 	emvsim->open_cnt = 1;
+	errval = pm_runtime_get_sync(emvsim_dev.parent);
+	if (errval < 0)
+		return errval;
+
 	init_completion(&emvsim->xfer_done);
 	errval = emvsim_reset_module(emvsim);
 	emvsim_data_reset(emvsim);
@@ -1510,11 +1514,7 @@ static int emvsim_release(struct inode *inode, struct file *file)
 	if (emvsim->present != SIM_PRESENT_REMOVED)
 		emvsim_deactivate(emvsim);
 
-	if (emvsim->open_cnt) {
-		clk_disable_unprepare(emvsim->clk);
-		clk_disable_unprepare(emvsim->ipg);
-	}
-
+	pm_runtime_put(emvsim_dev.parent);
 	emvsim->open_cnt = 0;
 
 	return 0;
@@ -1593,11 +1593,10 @@ static int emvsim_probe(struct platform_device *pdev)
 		return -EINVAL;
 
 	emvsim->clk_rate = FCLK_FREQ;
-	emvsim->open_cnt = 0;
 
 	emvsim->res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!emvsim->res) {
-		dev_err(emvsim_dev.parent, "Can't get the MEMORY\n");
+		dev_err(&pdev->dev, "Can't get the MEMORY\n");
 		return -ENOMEM;
 	}
 	emvsim->ioaddr = devm_ioremap_resource(&pdev->dev, emvsim->res);
@@ -1612,14 +1611,14 @@ static int emvsim_probe(struct platform_device *pdev)
 	emvsim->clk = devm_clk_get(&pdev->dev, "sim");
 	if (IS_ERR(emvsim->clk)) {
 		ret = PTR_ERR(emvsim->clk);
-		dev_err(emvsim_dev.parent, "Get PER CLK ERROR !\n");
+		dev_err(&pdev->dev, "Get PER CLK ERROR !\n");
 		return ret;
 	}
 
 	emvsim->ipg = devm_clk_get(&pdev->dev, "ipg");
 	if (IS_ERR(emvsim->ipg)) {
 		ret = PTR_ERR(emvsim->ipg);
-		dev_err(emvsim_dev.parent, "Get IPG CLK ERROR !\n");
+		dev_err(&pdev->dev, "Get IPG CLK ERROR !\n");
 		return ret;
 	}
 
@@ -1642,7 +1641,27 @@ static int emvsim_probe(struct platform_device *pdev)
         if (ret)
                 return ret;
 
+	pm_runtime_get_noresume(&pdev->dev);
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
+
+	emvsim->open_cnt = 1;
+	ret = clk_prepare_enable(emvsim->ipg);
+	if (ret)
+		return ret;
+	ret = clk_prepare_enable(emvsim->clk);
+	if (ret) {
+		clk_disable_unprepare(emvsim->ipg);
+		return ret;
+	}
+	/* Let pm_runtime_put() disable the clocks.
+	 * If CONFIG_PM is not enabled, the clocks will stay powered.
+	 */
+	pm_runtime_put(&pdev->dev);
+	emvsim->open_cnt = 0;
+
 	ret = misc_register(&emvsim_dev);
+
 	dev_info(&pdev->dev, "emvsim register %s\n", ret ? "fail" : "success");
 
 	return ret;
@@ -1650,62 +1669,84 @@ static int emvsim_probe(struct platform_device *pdev)
 
 static int emvsim_remove(struct platform_device *pdev)
 {
-	struct emvsim_t *emvsim = platform_get_drvdata(pdev);
-
-	if (emvsim->open_cnt) {
-		clk_disable_unprepare(emvsim->clk);
-		clk_disable_unprepare(emvsim->ipg);
-	}
+	pm_runtime_disable(&pdev->dev);
 
 	misc_deregister(&emvsim_dev);
 
 	return 0;
 }
 
-#ifdef CONFIG_PM
-static int emvsim_suspend(struct platform_device *pdev, pm_message_t state)
+static int __maybe_unused emvsim_suspend(struct device *dev)
 {
-	struct emvsim_t *emvsim = platform_get_drvdata(pdev);
+	int err;
+
+	err = pm_runtime_force_suspend(dev);
+	if (err)
+		return err;
+
+	pinctrl_pm_select_sleep_state(dev);
+
+	return 0;
+}
+
+static int __maybe_unused emvsim_runtime_suspend(struct device *dev)
+{
+	struct emvsim_t *emvsim = dev_get_drvdata(dev);
 
 	if (emvsim->open_cnt) {
 		clk_disable_unprepare(emvsim->clk);
 		clk_disable_unprepare(emvsim->ipg);
 	}
 
-	pinctrl_pm_select_sleep_state(&pdev->dev);
+	return 0;
+}
+
+static int __maybe_unused emvsim_resume(struct device *dev)
+{
+	int err;
+
+	err = pm_runtime_force_resume(dev);
+	if (err)
+		return err;
+
+	pinctrl_pm_select_default_state(dev);
 
 	return 0;
 }
 
-static int emvsim_resume(struct platform_device *pdev)
+static int __maybe_unused emvsim_runtime_resume(struct device *dev)
 {
-	struct emvsim_t *emvsim = platform_get_drvdata(pdev);
+	int err;
+	struct emvsim_t *emvsim = dev_get_drvdata(dev);
 
-	if (!emvsim->open_cnt) {
-		clk_prepare_enable(emvsim->ipg);
-		clk_prepare_enable(emvsim->clk);
+	if (emvsim->open_cnt) {
+		err = clk_prepare_enable(emvsim->ipg);
+		if (err)
+			return err;
+		err = clk_prepare_enable(emvsim->clk);
+		if (err) {
+			clk_disable_unprepare(emvsim->ipg);
+			return err;
+		}
 	}
 
-	pinctrl_pm_select_default_state(&pdev->dev);
-
 	return 0;
 }
 
-#else
-#define emvsim_suspend NULL
-#define emvsim_resume NULL
-#endif
+static const struct dev_pm_ops emvsim_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(emvsim_suspend, emvsim_resume)
+	SET_RUNTIME_PM_OPS(emvsim_runtime_suspend, emvsim_runtime_resume, NULL)
+};
 
 static struct platform_driver emvsim_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
+		.pm = &emvsim_pm_ops,
 		.of_match_table = emvsim_imx_dt_ids,
 	},
 	.probe = emvsim_probe,
 	.remove = emvsim_remove,
-	.suspend = emvsim_suspend,
-	.resume = emvsim_resume,
 };
 
 static int __init emvsim_drv_init(void)

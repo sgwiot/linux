@@ -430,6 +430,9 @@ void ath6kl_connect_ap_mode_sta(struct ath6kl_vif *vif, u16 aid, u8 *mac_addr,
 
 	ath6kl_dbg(ATH6KL_DBG_TRC, "new station %pM aid=%d\n", mac_addr, aid);
 
+	if (aid < 1 || aid > AP_MAX_NUM_STA)
+		return;
+
 	if (assoc_req_len > sizeof(struct ieee80211_hdr_3addr)) {
 		struct ieee80211_mgmt *mgmt =
 			(struct ieee80211_mgmt *) assoc_info;
@@ -624,8 +627,8 @@ static void ath6kl_check_ch_switch(struct ath6kl *ar, u16 channel)
 
 void ath6kl_connect_event(struct ath6kl_vif *vif, u16 channel, u8 *bssid,
 			  u16 listen_int, u16 beacon_int,
-			  enum network_type net_type, u8 beacon_ie_len,
-			  u8 assoc_req_len, u8 assoc_resp_len,
+			  enum network_type net_type, u16 beacon_ie_len,
+			  u16 assoc_req_len, u16 assoc_resp_len,
 			  u8 *assoc_info)
 {
 	struct ath6kl *ar = vif->ar;

@@ -32,6 +32,7 @@ struct fsl_micfil {
 	struct platform_device *pdev;
 	struct regmap *regmap;
 	const struct fsl_micfil_soc_data *soc;
+	struct clk *busclk;
 	struct clk *mclk;
 	struct clk *clk_src[MICFIL_CLK_SRC_NUM];
 	struct snd_dmaengine_dai_dma_data dma_params_rx;
@@ -842,6 +843,9 @@ static int fsl_micfil_reset(struct device *dev)
 		return ret;
 	}
 
+	/* w1c */
+	regmap_write_bits(micfil->regmap, REG_MICFIL_STAT, 0xFF, 0xFF);
+
 	return 0;
 }
 
@@ -875,9 +879,6 @@ static int configure_hwvad_interrupts(struct device *dev,
 			ret);
 		return ret;
 	}
-
-	/* w1c */
-	regmap_write_bits(micfil->regmap, REG_MICFIL_STAT, 0xFF, 0xFF);
 
 	return 0;
 }
@@ -1352,6 +1353,9 @@ static inline bool clk_in_list(struct clk *p, struct clk *clk_src[])
 	return false;
 }
 
+#define CLK_8K_FREQ    24576000
+#define CLK_11K_FREQ   22579200
+
 static int fsl_micfil_set_mclk_rate(struct fsl_micfil *micfil, int clk_id,
 				    unsigned int freq)
 {
@@ -1425,10 +1429,10 @@ static int fsl_micfil_set_mclk_rate(struct fsl_micfil *micfil, int clk_id,
 				 "failed to set parrent %d\n", ret);
 	}
 
-	ret = clk_set_rate(micfil->mclk, freq * 1024);
+	clk_rate = freq % 8000 == 0 ? CLK_8K_FREQ : CLK_11K_FREQ;
+	ret = clk_set_rate(micfil->mclk, clk_rate);
 	if (ret)
-		dev_warn(dev, "failed to set rate (%u): %d\n",
-			 freq * 1024, ret);
+		dev_warn(dev, "failed to set rate (%llu): %d\n", clk_rate, ret);
 	clk_prepare_enable(micfil->mclk);
 
 	return ret;
@@ -2065,14 +2069,6 @@ static int disable_hwvad(struct device *dev, bool sync)
 	int ret = 0;
 	u32 state;
 
-	/* This is required because if an arecord was done,
-	 * suspend function will mark regmap as cache only
-	 * and reads/writes in volatile regs will fail
-	 */
-	regcache_cache_only(micfil->regmap, false);
-	regcache_mark_dirty(micfil->regmap);
-	regcache_sync(micfil->regmap);
-
 	/* disable is called with sync = false only from
 	 * system suspend and in this case, you should not
 	 * change the hwvad_state so we know at system_resume
@@ -2086,6 +2082,14 @@ static int disable_hwvad(struct device *dev, bool sync)
 		state = atomic_read(&micfil->hwvad_state);
 
 	if (state == MICFIL_HWVAD_ON) {
+		/* This is required because if an arecord was done,
+		 * suspend function will mark regmap as cache only
+		 * and reads/writes in volatile regs will fail
+		 */
+		regcache_cache_only(micfil->regmap, false);
+		regcache_mark_dirty(micfil->regmap);
+		regcache_sync(micfil->regmap);
+
 		/* Voice Activity Detector Reset */
 		ret |= regmap_update_bits(micfil->regmap,
 					  REG_MICFIL_VAD0_CTRL1,
@@ -2134,13 +2138,12 @@ static int disable_hwvad(struct device *dev, bool sync)
 						  0);
 		}
 
+		if (sync)
+			pm_runtime_put_sync(dev);
 	} else {
 		ret = -EPERM;
 		dev_err(dev, "HWVAD is not enabled %d\n", ret);
 	}
-
-	if (sync)
-		pm_runtime_put_sync(dev);
 
 	return ret;
 }
@@ -2217,6 +2220,13 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 		return PTR_ERR(micfil->mclk);
 	}
 
+	micfil->busclk = devm_clk_get(&pdev->dev, "ipg_clk");
+	if (IS_ERR(micfil->busclk)) {
+		dev_err(&pdev->dev, "failed to get ipg clock: %ld\n",
+			PTR_ERR(micfil->busclk));
+		return PTR_ERR(micfil->busclk);
+	}
+
 	/* get audio pll1 and pll2 */
 	micfil->clk_src[MICFIL_AUDIO_PLL1] = devm_clk_get(&pdev->dev, "pll8k");
 	if (IS_ERR(micfil->clk_src[MICFIL_AUDIO_PLL1]))
@@ -2237,7 +2247,7 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 		return PTR_ERR(regs);
 
 	micfil->regmap = devm_regmap_init_mmio_clk(&pdev->dev,
-						   "ipg_clk",
+						   NULL,
 						   regs,
 						   &fsl_micfil_regmap_config);
 	if (IS_ERR(micfil->regmap)) {
@@ -2331,6 +2341,7 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, micfil);
 
 	pm_runtime_enable(&pdev->dev);
+	regcache_cache_only(micfil->regmap, true);
 
 	fsl_micfil_dai.capture.formats = micfil->soc->formats;
 
@@ -2385,6 +2396,8 @@ static int __maybe_unused fsl_micfil_runtime_suspend(struct device *dev)
 	if (state == MICFIL_HWVAD_OFF)
 		clk_disable_unprepare(micfil->mclk);
 
+	clk_disable_unprepare(micfil->busclk);
+
 	return 0;
 }
 
@@ -2393,6 +2406,10 @@ static int __maybe_unused fsl_micfil_runtime_resume(struct device *dev)
 	struct fsl_micfil *micfil = dev_get_drvdata(dev);
 	int ret;
 	u32 state;
+
+	ret = clk_prepare_enable(micfil->busclk);
+	if (ret < 0)
+		return ret;
 
 	state = atomic_read(&micfil->hwvad_state);
 

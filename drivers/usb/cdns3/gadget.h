@@ -460,7 +460,7 @@ struct cdns3_usb_regs {
 #define USB_IEN_INIT  (USB_IEN_U2RESIEN | USB_ISTS_DIS2I | USB_IEN_CON2IEN \
 		       | USB_IEN_UHRESIEN | USB_IEN_UWRESIEN | USB_IEN_DISIEN \
 		       | USB_IEN_CONIEN | USB_IEN_U3EXTIEN | USB_IEN_L2ENTIEN \
-		       | USB_IEN_L2EXTIEN)
+		       | USB_IEN_L2EXTIEN | USB_IEN_L1ENTIEN)
 
 /* USB_ISTS - bitmasks */
 /* SS Connection detected. */
@@ -964,9 +964,15 @@ struct cdns3_trb {
 /* Cycle bit - indicates TRB ownership by driver or hw*/
 #define TRB_CYCLE		BIT(0)
 /*
- * When set to '1', the device will toggle its interpretation of the Cycle bit
+ * When set to '1', the device will toggle its interpretation
+ * of the Cycle bit, this bit is for link TRB
  */
 #define TRB_TOGGLE		BIT(1)
+/*
+ * The controller will set it if OUTSMM (OUT size mismatch) is detected,
+ * this bit is for normal TRB
+ */
+#define TRB_SMM			BIT(1)
 
 /* Interrupt on short packet*/
 #define TRB_ISP			BIT(2)
@@ -992,7 +998,7 @@ struct cdns3_trb {
 #define TRB_TDL_SS_SIZE_GET(p)	(((p) & GENMASK(23, 17)) >> 17)
 
 /* transfer_len bitmasks - bits 31:24 */
-#define TRB_BURST_LEN(p)	(((p) << 24) & GENMASK(31, 24))
+#define TRB_BURST_LEN(p)	((unsigned int)((p) << 24) & GENMASK(31, 24))
 #define TRB_BURST_LEN_GET(p)	(((p) & GENMASK(31, 24)) >> 24)
 
 /* Data buffer pointer bitmasks*/
@@ -1269,5 +1275,6 @@ int cdns3_init_ep0(struct cdns3_device *priv_dev,
 void cdns3_ep0_config(struct cdns3_device *priv_dev);
 void cdns3_ep_config(struct cdns3_endpoint *priv_ep);
 void cdns3_check_ep0_interrupt_proceed(struct cdns3_device *priv_dev, int dir);
+int __cdns3_gadget_wakeup(struct cdns3_device *priv_dev);
 
 #endif /* __LINUX_CDNS3_GADGET */

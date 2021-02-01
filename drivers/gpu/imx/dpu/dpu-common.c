@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017-2019 NXP
+ * Copyright 2017-2020 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -111,6 +111,9 @@ static const unsigned long hs_pec_ofss[] = {0xb00, 0xb60, 0x8c0};
 static const unsigned long lb_ofss[] = {0xa400, 0xa800, 0xac00, 0xb000};
 static const unsigned long lb_pec_ofss[] = {0xba0, 0xbc0, 0xbe0, 0xc00};
 
+/* Signature Unit */
+static const unsigned long sig_ofss[] = {0xd000, 0xec00};
+
 /* Store Unit */
 static const unsigned long st_ofss[] = {0x4000};
 static const unsigned long st_pec_ofss[] = {0x940};
@@ -205,6 +208,14 @@ static const struct dpu_unit _lbs = {
 	.ofss = lb_ofss,
 };
 
+static const struct dpu_unit _sigs = {
+	.name = "Signature",
+	.num = ARRAY_SIZE(sig_ids),
+	.ids = sig_ids,
+	.pec_ofss = NULL,
+	.ofss = sig_ofss,
+};
+
 static const struct dpu_unit _sts = {
 	.name = "Store",
 	.num = ARRAY_SIZE(st_ids),
@@ -259,6 +270,7 @@ static const struct dpu_data dpu_data_qxp = {
 	.fws = &_fws,
 	.hss = &_hss,
 	.lbs = &_lbs,
+	.sigs = &_sigs,
 	.sts = &_sts,
 	.tcons = &_tcons,
 	.vss = &_vss,
@@ -283,6 +295,7 @@ static const struct dpu_data dpu_data_qm = {
 	.fws = &_fws,
 	.hss = &_hss,
 	.lbs = &_lbs,
+	.sigs = &_sigs,
 	.sts = &_sts,
 	.tcons = &_tcons,
 	.vss = &_vss,
@@ -292,7 +305,7 @@ static const struct dpu_data dpu_data_qm = {
 			  DPU_PLANE_SRC_FD0_ID | DPU_PLANE_SRC_FD1_ID,
 	.has_dual_ldb = false,
 	.syncmode_min_prate = 300000,
-	.singlemode_max_width = 1920,
+	.singlemode_max_width = 2560,
 	.master_stream_id = 1,
 };
 
@@ -498,6 +511,8 @@ static int dpu_attach_pm_domains(struct dpu_soc *dpu)
 			ret);
 		goto fail;
 	}
+
+	return ret;
 fail:
 	dpu_detach_pm_domains(dpu);
 	return ret;
@@ -538,6 +553,7 @@ static void dpu_units_addr_dbg(struct dpu_soc *dpu,
 	DPU_UNITS_ADDR_DBG(fw);
 	DPU_UNITS_ADDR_DBG(hs);
 	DPU_UNITS_ADDR_DBG(lb);
+	DPU_UNITS_ADDR_DBG(sig);
 	DPU_UNITS_ADDR_DBG(st);
 	DPU_UNITS_ADDR_DBG(tcon);
 	DPU_UNITS_ADDR_DBG(vs);
@@ -561,8 +577,12 @@ static int dpu_get_irq(struct platform_device *pdev, struct dpu_soc *dpu)
 	DPU_GET_IRQ(extdst5_shdload);
 	DPU_GET_IRQ(disengcfg_shdload0);
 	DPU_GET_IRQ(disengcfg_framecomplete0);
+	DPU_GET_IRQ(sig0_shdload);
+	DPU_GET_IRQ(sig0_valid);
 	DPU_GET_IRQ(disengcfg_shdload1);
 	DPU_GET_IRQ(disengcfg_framecomplete1);
+	DPU_GET_IRQ(sig1_shdload);
+	DPU_GET_IRQ(sig1_valid);
 
 	return 0;
 }
@@ -602,8 +622,12 @@ DPU_IRQ_HANDLER_DEFINE(extdst1_shdload, EXTDST1_SHDLOAD)
 DPU_IRQ_HANDLER_DEFINE(extdst5_shdload, EXTDST5_SHDLOAD)
 DPU_IRQ_HANDLER_DEFINE(disengcfg_shdload0, DISENGCFG_SHDLOAD0)
 DPU_IRQ_HANDLER_DEFINE(disengcfg_framecomplete0, DISENGCFG_FRAMECOMPLETE0)
+DPU_IRQ_HANDLER_DEFINE(sig0_shdload, SIG0_SHDLOAD);
+DPU_IRQ_HANDLER_DEFINE(sig0_valid, SIG0_VALID);
 DPU_IRQ_HANDLER_DEFINE(disengcfg_shdload1, DISENGCFG_SHDLOAD1)
 DPU_IRQ_HANDLER_DEFINE(disengcfg_framecomplete1, DISENGCFG_FRAMECOMPLETE1)
+DPU_IRQ_HANDLER_DEFINE(sig1_shdload, SIG1_SHDLOAD);
+DPU_IRQ_HANDLER_DEFINE(sig1_valid, SIG1_VALID);
 
 int dpu_map_irq(struct dpu_soc *dpu, int irq)
 {
@@ -673,15 +697,87 @@ irq_set_chained_handler_and_data(dpu->irq_##name, dpu_##name##_irq_handler, dpu)
 	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA1(extdst5_shdload);
 	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA1(disengcfg_shdload0);
 	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA1(disengcfg_framecomplete0);
+	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA1(sig0_shdload);
+	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA1(sig0_valid);
 	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA1(disengcfg_shdload1);
 	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA1(disengcfg_framecomplete1);
+	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA1(sig1_shdload);
+	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA1(sig1_valid);
+
+#define DPU_IRQ_CHIP_PM_GET(name)					\
+{									\
+	ret = irq_chip_pm_get(irq_get_irq_data(dpu->irq_##name));	\
+	if (ret < 0) {							\
+		dev_err(dpu->dev,					\
+			"failed to get irq chip PM for irq%d %d\n",	\
+						dpu->irq_##name, ret);	\
+		goto pm_get_rollback;					\
+	}								\
+	dpu->irq_chip_pm_get_##name = true;				\
+}
+
+#define DPU_IRQ_CHIP_PM_PUT_CHECK(name)					\
+{									\
+	if (dpu->irq_chip_pm_get_##name) {				\
+		irq_chip_pm_put(irq_get_irq_data(dpu->irq_##name));	\
+		dpu->irq_chip_pm_get_##name = false;			\
+	}								\
+}
+
+	DPU_IRQ_CHIP_PM_GET(extdst0_shdload);
+	DPU_IRQ_CHIP_PM_GET(extdst4_shdload);
+	DPU_IRQ_CHIP_PM_GET(extdst1_shdload);
+	DPU_IRQ_CHIP_PM_GET(extdst5_shdload);
+	DPU_IRQ_CHIP_PM_GET(disengcfg_shdload0);
+	DPU_IRQ_CHIP_PM_GET(disengcfg_framecomplete0);
+	DPU_IRQ_CHIP_PM_GET(sig0_shdload);
+	DPU_IRQ_CHIP_PM_GET(sig0_valid);
+	DPU_IRQ_CHIP_PM_GET(disengcfg_shdload1);
+	DPU_IRQ_CHIP_PM_GET(disengcfg_framecomplete1);
+	DPU_IRQ_CHIP_PM_GET(sig1_shdload);
+	DPU_IRQ_CHIP_PM_GET(sig1_valid);
 
 	return 0;
+
+pm_get_rollback:
+	DPU_IRQ_CHIP_PM_PUT_CHECK(extdst0_shdload);
+	DPU_IRQ_CHIP_PM_PUT_CHECK(extdst4_shdload);
+	DPU_IRQ_CHIP_PM_PUT_CHECK(extdst1_shdload);
+	DPU_IRQ_CHIP_PM_PUT_CHECK(extdst5_shdload);
+	DPU_IRQ_CHIP_PM_PUT_CHECK(disengcfg_shdload0);
+	DPU_IRQ_CHIP_PM_PUT_CHECK(disengcfg_framecomplete0);
+	DPU_IRQ_CHIP_PM_PUT_CHECK(sig0_shdload);
+	DPU_IRQ_CHIP_PM_PUT_CHECK(sig0_valid);
+	DPU_IRQ_CHIP_PM_PUT_CHECK(disengcfg_shdload1);
+	DPU_IRQ_CHIP_PM_PUT_CHECK(disengcfg_framecomplete1);
+	DPU_IRQ_CHIP_PM_PUT_CHECK(sig1_shdload);
+	DPU_IRQ_CHIP_PM_PUT_CHECK(sig1_valid);
+
+	return ret;
 }
 
 static void dpu_irq_exit(struct dpu_soc *dpu)
 {
 	unsigned int i, irq;
+
+#define DPU_IRQ_CHIP_PM_PUT(name)				\
+{								\
+	irq_chip_pm_put(irq_get_irq_data(dpu->irq_##name));	\
+	dpu->irq_chip_pm_get_##name = false;			\
+}
+
+	DPU_IRQ_CHIP_PM_PUT(extdst0_shdload);
+	DPU_IRQ_CHIP_PM_PUT(extdst4_shdload);
+	DPU_IRQ_CHIP_PM_PUT(extdst1_shdload);
+	DPU_IRQ_CHIP_PM_PUT(extdst5_shdload);
+	DPU_IRQ_CHIP_PM_PUT(disengcfg_shdload0);
+	DPU_IRQ_CHIP_PM_PUT(disengcfg_framecomplete0);
+	DPU_IRQ_CHIP_PM_PUT(sig0_shdload);
+	DPU_IRQ_CHIP_PM_PUT(sig0_valid);
+	DPU_IRQ_CHIP_PM_PUT(disengcfg_shdload1);
+	DPU_IRQ_CHIP_PM_PUT(disengcfg_framecomplete1);
+	DPU_IRQ_CHIP_PM_PUT(sig1_shdload);
+	DPU_IRQ_CHIP_PM_PUT(sig1_valid);
 
 #define DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA2(name)	\
 irq_set_chained_handler_and_data(dpu->irq_##name, NULL, NULL)
@@ -692,8 +788,12 @@ irq_set_chained_handler_and_data(dpu->irq_##name, NULL, NULL)
 	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA2(extdst5_shdload);
 	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA2(disengcfg_shdload0);
 	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA2(disengcfg_framecomplete0);
+	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA2(sig0_shdload);
+	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA2(sig0_valid);
 	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA2(disengcfg_shdload1);
 	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA2(disengcfg_framecomplete1);
+	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA2(sig1_shdload);
+	DPU_IRQ_SET_CHAINED_HANDLER_AND_DATA2(sig1_valid);
 
 	for (i = 0; i < dpu->irq_line_num; i++) {
 		irq = irq_linear_revmap(dpu->domain, i);
@@ -732,6 +832,7 @@ _dpu_submodules_init(struct dpu_soc *dpu, struct platform_device *pdev)
 	_DPU_UNITS_INIT(fw);
 	_DPU_UNITS_INIT(hs);
 	_DPU_UNITS_INIT(lb);
+	_DPU_UNITS_INIT(sig);
 	_DPU_UNITS_INIT(st);
 	_DPU_UNITS_INIT(tcon);
 	_DPU_UNITS_INIT(vs);
@@ -792,6 +893,7 @@ static int dpu_submodules_init(struct dpu_soc *dpu,
 	DPU_UNITS_INIT(fw);
 	DPU_UNITS_INIT(hs);
 	DPU_UNITS_INIT(lb);
+	DPU_UNITS_INIT(sig);
 	DPU_UNITS_INIT(st);
 	DPU_UNITS_INIT(tcon);
 	DPU_UNITS_INIT(vs);
@@ -1085,14 +1187,19 @@ err_get_plane_res:
 
 static int dpu_probe(struct platform_device *pdev)
 {
-	const struct of_device_id *of_id =
-			of_match_device(dpu_dt_ids, &pdev->dev);
+	const struct of_device_id *of_id;
 	struct device_node *np = pdev->dev.of_node;
 	struct dpu_soc *dpu;
 	struct resource *res;
 	unsigned long dpu_base;
-	const struct dpu_data *data = of_id->data;
+	const struct dpu_data *data;
 	int ret;
+
+	of_id = of_match_device(dpu_dt_ids, &pdev->dev);
+	if (!of_id)
+		return -ENODEV;
+
+	data = of_id->data;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)

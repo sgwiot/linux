@@ -39,9 +39,9 @@ static void cdns3_ep0_run_transfer(struct cdns3_device *priv_dev,
 	struct cdns3_usb_regs __iomem *regs = priv_dev->regs;
 	struct cdns3_endpoint *priv_ep = priv_dev->eps[0];
 
-	priv_ep->trb_pool->buffer = TRB_BUFFER(dma_addr);
-	priv_ep->trb_pool->length = TRB_LEN(length);
-	priv_ep->trb_pool->control = TRB_CYCLE | TRB_IOC | TRB_TYPE(TRB_NORMAL);
+	priv_ep->trb_pool->buffer = cpu_to_le32(TRB_BUFFER(dma_addr));
+	priv_ep->trb_pool->length = cpu_to_le32(TRB_LEN(length));
+	priv_ep->trb_pool->control = cpu_to_le32(TRB_CYCLE | TRB_IOC | TRB_TYPE(TRB_NORMAL));
 
 	trace_cdns3_prepare_trb(priv_ep, priv_ep->trb_pool);
 
@@ -51,6 +51,8 @@ static void cdns3_ep0_run_transfer(struct cdns3_device *priv_dev,
 	writel(EP_TRADDR_TRADDR(priv_ep->trb_pool_dma), &regs->ep_traddr);
 	trace_cdns3_doorbell_ep0(priv_dev->ep0_data_dir ? "ep0in" : "ep0out",
 				 readl(&regs->ep_traddr));
+	/* Resume controller before arming transfer. */
+	__cdns3_gadget_wakeup(priv_dev);
 
 	/* TRB should be prepared before starting transfer */
 	writel(EP_CMD_DRDY, &regs->ep_cmd);
@@ -149,13 +151,12 @@ static int cdns3_req_ep0_set_configuration(struct cdns3_device *priv_dev,
 		if (result)
 			return result;
 
-		if (config) {
-			cdns3_set_hw_configuration(priv_dev);
-		} else {
+		if (!config) {
 			cdns3_hw_reset_eps_config(priv_dev);
 			usb_gadget_set_state(&priv_dev->gadget,
 					     USB_STATE_ADDRESS);
 		}
+
 		break;
 	case USB_STATE_CONFIGURED:
 		result = cdns3_ep0_delegate_req(priv_dev, ctrl_req);
@@ -255,7 +256,7 @@ static int cdns3_req_ep0_get_status(struct cdns3_device *priv_dev,
 		return cdns3_ep0_delegate_req(priv_dev, ctrl);
 	case USB_RECIP_ENDPOINT:
 		/* check if endpoint is stalled */
-		cdns3_select_ep(priv_dev, ctrl->wIndex);
+		cdns3_select_ep(priv_dev, le16_to_cpu(ctrl->wIndex));
 		if (EP_STS_STALL(readl(&priv_dev->regs->ep_sts)))
 			usb_status =  BIT(USB_ENDPOINT_HALT);
 		break;
@@ -315,7 +316,8 @@ static int cdns3_ep0_feature_handle_device(struct cdns3_device *priv_dev,
 		if (!set || (tmode & 0xff) != 0)
 			return -EINVAL;
 
-		switch (tmode >> 8) {
+		tmode >>= 8;
+		switch (tmode) {
 		case TEST_J:
 		case TEST_K:
 		case TEST_SE0_NAK:
@@ -375,10 +377,10 @@ static int cdns3_ep0_feature_handle_endpoint(struct cdns3_device *priv_dev,
 	if (!(ctrl->wIndex & ~USB_DIR_IN))
 		return 0;
 
-	index = cdns3_ep_addr_to_index(ctrl->wIndex);
+	index = cdns3_ep_addr_to_index(le16_to_cpu(ctrl->wIndex));
 	priv_ep = priv_dev->eps[index];
 
-	cdns3_select_ep(priv_dev, ctrl->wIndex);
+	cdns3_select_ep(priv_dev, le16_to_cpu(ctrl->wIndex));
 
 	if (set) {
 		cdns3_dbg(priv_ep->cdns3_dev, "Stall endpoint %s\n",
@@ -475,7 +477,7 @@ static int cdns3_req_ep0_set_sel(struct cdns3_device *priv_dev,
 	if (priv_dev->gadget.state < USB_STATE_ADDRESS)
 		return -EINVAL;
 
-	if (ctrl_req->wLength != 6) {
+	if (le16_to_cpu(ctrl_req->wLength) != 6) {
 		dev_err(priv_dev->dev, "Set SEL should be 6 bytes, got %d\n",
 			ctrl_req->wLength);
 		return -EINVAL;
@@ -499,7 +501,7 @@ static int cdns3_req_ep0_set_isoch_delay(struct cdns3_device *priv_dev,
 	if (ctrl_req->wIndex || ctrl_req->wLength)
 		return -EINVAL;
 
-	priv_dev->isoch_delay = ctrl_req->wValue;
+	priv_dev->isoch_delay = le16_to_cpu(ctrl_req->wValue);
 
 	return 0;
 }
@@ -754,27 +756,26 @@ static int cdns3_gadget_ep0_queue(struct usb_ep *ep,
 	struct cdns3_endpoint *priv_ep = ep_to_cdns3_ep(ep);
 	struct cdns3_device *priv_dev = priv_ep->cdns3_dev;
 	unsigned long flags;
-	int erdy_sent = 0;
 	int ret = 0;
 
 	cdns3_dbg(priv_ep->cdns3_dev, "Queue to Ep0%s L: %d\n",
 		  priv_dev->ep0_data_dir ? "IN" : "OUT",
 		  request->length);
 
+	spin_lock_irqsave(&priv_dev->lock, flags);
+
 	/* cancel the request if controller receive new SETUP packet. */
-	if (cdns3_check_new_setup(priv_dev))
+	if (cdns3_check_new_setup(priv_dev)) {
+		spin_unlock_irqrestore(&priv_dev->lock, flags);
 		return -ECONNRESET;
+	}
 
 	/* send STATUS stage. Should be called only for SET_CONFIGURATION */
 	if (priv_dev->ep0_stage == CDNS3_STATUS_STAGE) {
-		spin_lock_irqsave(&priv_dev->lock, flags);
 		cdns3_select_ep(priv_dev, 0x00);
 
-		erdy_sent = !priv_dev->hw_configured_flag;
 		cdns3_set_hw_configuration(priv_dev);
-
-		if (!erdy_sent)
-			cdns3_ep0_complete_setup(priv_dev, 0, 1);
+		cdns3_ep0_complete_setup(priv_dev, 0, 1);
 
 		request->actual = 0;
 		priv_dev->status_completion_no_call = true;
@@ -790,7 +791,6 @@ static int cdns3_gadget_ep0_queue(struct usb_ep *ep,
 		return 0;
 	}
 
-	spin_lock_irqsave(&priv_dev->lock, flags);
 	if (!list_empty(&priv_ep->pending_req_list)) {
 		dev_err(priv_dev->dev,
 			"can't handle multiple requests for ep0\n");
@@ -861,13 +861,7 @@ void cdns3_ep0_config(struct cdns3_device *priv_dev)
 		max_packet_size = 512;
 
 	priv_ep = priv_dev->eps[0];
-
-	if (!list_empty(&priv_ep->pending_req_list)) {
-		struct usb_request *request;
-
-		request = cdns3_next_request(&priv_ep->pending_req_list);
-		list_del_init(&request->list);
-	}
+	INIT_LIST_HEAD(&priv_ep->pending_req_list);
 
 	priv_dev->u1_allowed = 0;
 	priv_dev->u2_allowed = 0;

@@ -10,6 +10,7 @@
 #include <linux/clk-provider.h>
 #include <linux/err.h>
 #include <linux/firmware/imx/svc/rm.h>
+#include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
@@ -29,6 +30,7 @@ static const struct imx_clk_scu_rsrc_table *rsrc_table;
 static struct delayed_work cpufreq_governor_daemon;
 struct device_node *pd_np;
 u32 clock_cells;
+EXPORT_SYMBOL_GPL(clock_cells);
 
 struct imx_scu_clk_node {
 	const char *name;
@@ -42,6 +44,7 @@ struct imx_scu_clk_node {
 };
 
 struct list_head imx_scu_clks[IMX_SC_R_LAST];
+EXPORT_SYMBOL_GPL(imx_scu_clks);
 
 /*
  * struct clk_scu - Description of one SCU clock
@@ -220,6 +223,7 @@ int imx_clk_scu_init(struct device_node *np, const void *data)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(imx_clk_scu_init);
 
 /*
  * clk_scu_recalc_rate - Get clock rate for a SCU clock
@@ -501,6 +505,7 @@ struct clk_hw *__imx_clk_scu(struct device *dev, const char *name,
 
 	return hw;
 }
+EXPORT_SYMBOL_GPL(__imx_clk_scu);
 
 struct clk_hw *imx_scu_of_clk_src_get(struct of_phandle_args *clkspec,
 				      void *data)
@@ -517,6 +522,7 @@ struct clk_hw *imx_scu_of_clk_src_get(struct of_phandle_args *clkspec,
 
 	return ERR_PTR(-ENODEV);
 }
+EXPORT_SYMBOL_GPL(imx_scu_of_clk_src_get);
 
 static int imx_clk_scu_probe(struct platform_device *pdev)
 {
@@ -655,6 +661,12 @@ static int imx_clk_scu_attach_pd(struct device *dev, u32 rsrc_id)
 	    (rsrc_id == IMX_SC_R_A72))
 		return 0;
 
+	/*
+	 * Temp fix to avoid the uart clk attached pd power off uart_0
+	 */
+	if (rsrc_id == IMX_SC_R_UART_0 && xen_initial_domain())
+			return 0;
+
 	return of_genpd_add_device(&genpdspec, dev);
 }
 
@@ -722,6 +734,7 @@ struct clk_hw *imx_clk_scu_alloc_dev(const char *name,
 	/* For API backwards compatiblilty, simply return NULL for success */
 	return NULL;
 }
+EXPORT_SYMBOL_GPL(imx_clk_scu_alloc_dev);
 
 static unsigned long clk_gpr_div_scu_recalc_rate(struct clk_hw *hw,
 						 unsigned long parent_rate)
@@ -901,6 +914,7 @@ struct clk_hw *__imx_clk_gpr_scu(const char *name, const char * const *parent_na
 
 	return hw;
 }
+EXPORT_SYMBOL_GPL(__imx_clk_gpr_scu);
 
 static void cpufreq_governor_daemon_handler(struct work_struct *work)
 {

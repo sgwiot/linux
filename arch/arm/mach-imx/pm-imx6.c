@@ -25,6 +25,7 @@
 #include <asm/proc-fns.h>
 #include <asm/suspend.h>
 #include <asm/tlb.h>
+#include <linux/regulator/machine.h>
 
 #include <uapi/linux/psci.h>
 
@@ -92,6 +93,12 @@
 
 extern unsigned long iram_tlb_base_addr;
 extern unsigned long iram_tlb_phys_addr;
+
+/*
+ * Function pointers to optional board pm functions
+ */
+int (*imx6_board_pm_begin)(suspend_state_t);
+void (*imx6_board_pm_end)(void);
 
 /* QSPI register layout */
 #define QSPI_MCR			0x00
@@ -876,7 +883,10 @@ static int imx6q_pm_enter(suspend_state_t state)
 		imx6_set_lpm(WAIT_CLOCKED);
 		break;
 	case PM_SUSPEND_MEM:
-		imx6_set_lpm(STOP_POWER_OFF);
+		if (of_machine_is_compatible("digi,ccimx6"))
+			imx6_set_lpm(STOP_POWER_ON);
+		else
+			imx6_set_lpm(STOP_POWER_OFF);
 		imx6_set_int_mem_clk_lpm(false);
 		imx6q_enable_wb(true);
 		/*
@@ -954,12 +964,30 @@ static int imx6q_pm_enter(suspend_state_t state)
 	return 0;
 }
 
+static int imx6q_pm_begin(suspend_state_t state)
+{
+	if (imx6_board_pm_begin)
+		return imx6_board_pm_begin(state);
+
+	return 0;
+}
+EXPORT_SYMBOL(imx6_board_pm_begin);
+
+static void imx6q_pm_end(void)
+{
+	if (imx6_board_pm_end)
+		imx6_board_pm_end();
+}
+EXPORT_SYMBOL(imx6_board_pm_end);
+
 static int imx6q_pm_valid(suspend_state_t state)
 {
 	return (state == PM_SUSPEND_STANDBY || state == PM_SUSPEND_MEM);
 }
 
 static const struct platform_suspend_ops imx6q_pm_ops = {
+	.begin = imx6q_pm_begin,
+	.end = imx6q_pm_end,
 	.enter = imx6q_pm_enter,
 	.valid = imx6q_pm_valid,
 };
@@ -1066,7 +1094,6 @@ void __init imx6_pm_map_io(void)
 
 static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 {
-	struct device_node *node;
 	struct imx6_cpu_pm_info *pm_info;
 	unsigned long iram_paddr;
 	int i, ret = 0;
@@ -1080,11 +1107,8 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 		return -EINVAL;
 	}
 
-	if (psci_ops.cpu_suspend) {
-		/* TODO: seems not needed */
-		/* of_node_put(node); */
+	if (psci_ops.cpu_suspend)
 		return ret;
-	}
 
 	/*
 	 * 16KB is allocated for IRAM TLB, but only up 8k is for kernel TLB,
@@ -1230,12 +1254,33 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 		&imx6_suspend,
 		MX6Q_SUSPEND_OCRAM_SIZE - sizeof(*pm_info));
 
-	goto put_node;
-
-put_node:
-	of_node_put(node);
-
 	return ret;
+}
+
+static int imx6_suspend_prepare(struct notifier_block *nb, unsigned long action,
+		void *ptr)
+{
+	switch (action) {
+
+	case PM_SUSPEND_PREPARE:
+#ifdef CONFIG_REGULATOR
+		regulator_suspend_prepare(PM_SUSPEND_MEM);
+#endif
+		break;
+	case PM_HIBERNATION_PREPARE:
+#ifdef CONFIG_REGULATOR
+		regulator_suspend_prepare(PM_SUSPEND_STANDBY);
+#endif
+		break;
+	case PM_POST_SUSPEND:
+	case PM_POST_HIBERNATION:
+		break;
+
+	default:
+		return NOTIFY_DONE;
+	}
+
+	return NOTIFY_OK;
 }
 
 static void __init imx6_pm_common_init(const struct imx6_pm_socdata
@@ -1264,6 +1309,8 @@ static void __init imx6_pm_common_init(const struct imx6_pm_socdata
 	if (!IS_ERR(gpr))
 		regmap_update_bits(gpr, IOMUXC_GPR1, IMX6Q_GPR1_GINT,
 				   IMX6Q_GPR1_GINT);
+
+	pm_notifier(imx6_suspend_prepare, 0);
 }
 
 void __init imx6_pm_ccm_init(const char *ccm_compat)

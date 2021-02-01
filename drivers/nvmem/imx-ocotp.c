@@ -14,6 +14,7 @@
  * Copyright (C) 2010-2013 Freescale Semiconductor, Inc
  */
 
+#include <linux/busfreq-imx.h>
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/io.h>
@@ -319,6 +320,8 @@ static int imx_ocotp_write(void *context, unsigned int offset, void *val,
 		return ret;
 	}
 
+	request_bus_freq(BUS_FREQ_HIGH);
+
 	/* Setup the write timing values */
 	priv->params->set_timing(priv);
 
@@ -458,6 +461,8 @@ static int imx_ocotp_write(void *context, unsigned int offset, void *val,
 	}
 
 write_end:
+	release_bus_freq(BUS_FREQ_HIGH);
+
 	clk_disable_unprepare(priv->clk);
 	mutex_unlock(&ocotp_mutex);
 	if (ret < 0)
@@ -616,7 +621,19 @@ static struct platform_driver imx_ocotp_driver = {
 		.of_match_table = imx_ocotp_dt_ids,
 	},
 };
-module_platform_driver(imx_ocotp_driver);
+
+static int __init imx_ocotp_init(void)
+{
+	return platform_driver_register(&imx_ocotp_driver);
+}
+
+static void __exit imx_ocotp_exit(void)
+{
+	platform_driver_unregister(&imx_ocotp_driver);
+}
+
+subsys_initcall(imx_ocotp_init);
+module_exit(imx_ocotp_exit);
 
 MODULE_AUTHOR("Philipp Zabel <p.zabel@pengutronix.de>");
 MODULE_DESCRIPTION("i.MX6/i.MX7 OCOTP fuse box driver");

@@ -3,7 +3,7 @@
  * caam - Freescale FSL CAAM support for crypto API
  *
  * Copyright 2008-2011 Freescale Semiconductor, Inc.
- * Copyright 2016-2019 NXP
+ * Copyright 2016-2020 NXP
  *
  * Based on talitos crypto API driver.
  *
@@ -747,50 +747,19 @@ static int skcipher_setkey(struct crypto_skcipher *skcipher, const u8 *key,
 	u32 *desc;
 	const bool is_rfc3686 = alg->caam.rfc3686;
 
-	print_hex_dump_debug("key in @"__stringify(__LINE__)": ",
-			     DUMP_PREFIX_ADDRESS, 16, 4, key, keylen, 1);
-
-	ctx->cdata.keylen = keylen;
-	ctx->cdata.key_virt = key;
-	ctx->cdata.key_inline = true;
-
-#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API
 	/*
-	 * Check if the key is not in plaintext format
+	 * If the algorithm has support for tagged key,
+	 * this is already set in tk_skcipher_setkey().
+	 * Otherwise, set here the algorithm details.
 	 */
-	if (alg->caam.support_tagged_key) {
-		struct tag_object_conf *tagged_key_conf;
-		int ret;
-
-		/* Get the configuration */
-		ret = get_tag_object_conf(ctx->cdata.key_virt,
-					  ctx->cdata.keylen, &tagged_key_conf);
-		if (ret) {
-			dev_err(jrdev,
-				"caam algorithms can't process tagged key\n");
-			return ret;
-		}
-
-		/* Only support black key */
-		if (!is_bk_conf(tagged_key_conf)) {
-			dev_err(jrdev,
-				"The tagged key provided is not a black key\n");
-			return -EINVAL;
-		}
-
-		get_blackey_conf(&tagged_key_conf->conf.bk_conf,
-				 &ctx->cdata.key_real_len,
-				 &ctx->cdata.key_cmd_opt);
-
-		ret = get_tagged_data(ctx->cdata.key_virt, ctx->cdata.keylen,
-				      &ctx->cdata.key_virt, &ctx->cdata.keylen);
-		if (ret) {
-			dev_err(jrdev,
-				"caam algorithms wrong data from tagged key\n");
-			return ret;
-		}
+	if (!alg->caam.support_tagged_key) {
+		ctx->cdata.keylen = keylen;
+		ctx->cdata.key_virt = key;
+		ctx->cdata.key_inline = true;
 	}
-#endif /* CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API */
+
+	print_hex_dump_debug("key in @" __stringify(__LINE__) ": ",
+			     DUMP_PREFIX_ADDRESS, 16, 4, key, keylen, 1);
 
 	/* skcipher_encrypt shared descriptor */
 	desc = ctx->sh_desc_enc;
@@ -871,17 +840,62 @@ static int ctr_skcipher_setkey(struct crypto_skcipher *skcipher,
 	return skcipher_setkey(skcipher, key, keylen, ctx1_iv_off);
 }
 
-static int arc4_skcipher_setkey(struct crypto_skcipher *skcipher,
-				const u8 *key, unsigned int keylen)
-{
-	return skcipher_setkey(skcipher, key, keylen, 0);
-}
-
 #ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API
 static int tk_skcipher_setkey(struct crypto_skcipher *skcipher,
-				const u8 *key, unsigned int keylen)
+			      const u8 *key, unsigned int keylen)
 {
-	return skcipher_setkey(skcipher, key, keylen, 0);
+	struct caam_ctx *ctx = crypto_skcipher_ctx(skcipher);
+	struct device *jrdev = ctx->jrdev;
+	struct header_conf *header;
+	struct tagged_object *tag_obj;
+	int ret;
+
+	ctx->cdata.key_inline = true;
+
+	/* Check if one can retrieve the tag object header configuration */
+	if (keylen <= TAG_OVERHEAD_SIZE)
+		return -EINVAL;
+
+	/* Retrieve the tag object */
+	tag_obj = (struct tagged_object *)key;
+
+	/*
+	 * Check tag object header configuration
+	 * and retrieve the tag object header configuration
+	 */
+	if (is_valid_header_conf(&tag_obj->header)) {
+		header = &tag_obj->header;
+	} else {
+		dev_err(jrdev,
+			"unable to get tag object header configuration\n");
+		return -EINVAL;
+	}
+
+	/* Check if the tag object header is a black key */
+	if (!is_black_key(header)) {
+		dev_err(jrdev,
+			"tagged key provided is not a black key\n");
+		return -EINVAL;
+	}
+
+	/* Retrieve the black key configuration */
+	get_key_conf(header,
+		     &ctx->cdata.key_real_len,
+		     &ctx->cdata.keylen,
+		     &ctx->cdata.key_cmd_opt);
+
+	/* Retrieve the address of the data of the tagged object */
+	ctx->cdata.key_virt = &tag_obj->object;
+
+	/* Validate key length for AES algorithms */
+	ret = aes_check_keylen(ctx->cdata.key_real_len);
+	if (ret) {
+		crypto_skcipher_set_flags(skcipher,
+					  CRYPTO_TFM_RES_BAD_KEY_LEN);
+		return ret;
+	}
+
+	return skcipher_setkey(skcipher, NULL, 0, 0);
 }
 #endif /* CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API */
 
@@ -1033,10 +1047,12 @@ static void aead_crypt_done(struct device *jrdev, u32 *desc, u32 err,
 	struct caam_drv_private_jr *jrp = dev_get_drvdata(jrdev);
 	struct aead_edesc *edesc;
 	int ecode = 0;
+	bool has_bklog;
 
 	dev_dbg(jrdev, "%s %d: err 0x%x\n", __func__, __LINE__, err);
 
 	edesc = rctx->edesc;
+	has_bklog = edesc->bklog;
 
 	if (err)
 		ecode = caam_jr_strstatus(jrdev, err);
@@ -1049,7 +1065,7 @@ static void aead_crypt_done(struct device *jrdev, u32 *desc, u32 err,
 	 * If no backlog flag, the completion of the request is done
 	 * by CAAM, not crypto engine.
 	 */
-	if (!edesc->bklog)
+	if (!has_bklog)
 		aead_request_complete(req, ecode);
 	else
 		crypto_finalize_aead_request(jrp->engine, req, ecode);
@@ -1065,10 +1081,12 @@ static void skcipher_crypt_done(struct device *jrdev, u32 *desc, u32 err,
 	struct caam_drv_private_jr *jrp = dev_get_drvdata(jrdev);
 	int ivsize = crypto_skcipher_ivsize(skcipher);
 	int ecode = 0;
+	bool has_bklog;
 
 	dev_dbg(jrdev, "%s %d: err 0x%x\n", __func__, __LINE__, err);
 
 	edesc = rctx->edesc;
+	has_bklog = edesc->bklog;
 	if (err)
 		ecode = caam_jr_strstatus(jrdev, err);
 
@@ -1098,7 +1116,7 @@ static void skcipher_crypt_done(struct device *jrdev, u32 *desc, u32 err,
 	 * If no backlog flag, the completion of the request is done
 	 * by CAAM, not crypto engine.
 	 */
-	if (!edesc->bklog)
+	if (!has_bklog)
 		skcipher_request_complete(req, ecode);
 	else
 		crypto_finalize_skcipher_request(jrp->engine, req, ecode);
@@ -2069,21 +2087,6 @@ static struct caam_skcipher_alg driver_algs[] = {
 			.max_keysize = DES3_EDE_KEY_SIZE,
 		},
 		.caam.class1_alg_type = OP_ALG_ALGSEL_3DES | OP_ALG_AAI_ECB,
-	},
-	{
-		.skcipher = {
-			.base = {
-				.cra_name = "ecb(arc4)",
-				.cra_driver_name = "ecb-arc4-caam",
-				.cra_blocksize = ARC4_BLOCK_SIZE,
-			},
-			.setkey = arc4_skcipher_setkey,
-			.encrypt = skcipher_encrypt,
-			.decrypt = skcipher_decrypt,
-			.min_keysize = ARC4_MIN_KEY_SIZE,
-			.max_keysize = ARC4_MAX_KEY_SIZE,
-		},
-		.caam.class1_alg_type = OP_ALG_ALGSEL_ARC4 | OP_ALG_AAI_ECB,
 	},
 };
 
@@ -3534,8 +3537,7 @@ static void caam_skcipher_alg_init(struct caam_skcipher_alg *t_alg)
 	struct skcipher_alg *alg = &t_alg->skcipher;
 
 	alg->base.cra_module = THIS_MODULE;
-	alg->base.cra_priority =
-		t_alg->caam.support_tagged_key ? 1 : CAAM_CRA_PRIORITY;
+	alg->base.cra_priority = CAAM_CRA_PRIORITY;
 	alg->base.cra_ctxsize = sizeof(struct caam_ctx);
 	alg->base.cra_flags = CRYPTO_ALG_ASYNC | CRYPTO_ALG_KERN_DRIVER_ONLY;
 
@@ -3561,7 +3563,6 @@ int caam_algapi_init(struct device *ctrldev)
 	struct caam_drv_private *priv = dev_get_drvdata(ctrldev);
 	int i = 0, err = 0;
 	u32 aes_vid, aes_inst, des_inst, md_vid, md_inst, ccha_inst, ptha_inst;
-	u32 arc4_inst;
 	unsigned int md_limit = SHA512_DIGEST_SIZE;
 	bool registered = false, gcm_support;
 
@@ -3582,8 +3583,6 @@ int caam_algapi_init(struct device *ctrldev)
 			   CHA_ID_LS_DES_SHIFT;
 		aes_inst = cha_inst & CHA_ID_LS_AES_MASK;
 		md_inst = (cha_inst & CHA_ID_LS_MD_MASK) >> CHA_ID_LS_MD_SHIFT;
-		arc4_inst = (cha_inst & CHA_ID_LS_ARC4_MASK) >>
-			    CHA_ID_LS_ARC4_SHIFT;
 		ccha_inst = 0;
 		ptha_inst = 0;
 
@@ -3604,7 +3603,6 @@ int caam_algapi_init(struct device *ctrldev)
 		md_inst = mdha & CHA_VER_NUM_MASK;
 		ccha_inst = rd_reg32(&vreg->ccha) & CHA_VER_NUM_MASK;
 		ptha_inst = rd_reg32(&vreg->ptha) & CHA_VER_NUM_MASK;
-		arc4_inst = rd_reg32(&vreg->afha) & CHA_VER_NUM_MASK;
 
 		gcm_support = aesa & CHA_VER_MISC_AES_GCM;
 	}
@@ -3626,10 +3624,6 @@ int caam_algapi_init(struct device *ctrldev)
 		/* Skip AES algorithms if not supported by device */
 		if (!aes_inst && (alg_sel == OP_ALG_ALGSEL_AES))
 				continue;
-
-		/* Skip ARC4 algorithms if not supported by device */
-		if (!arc4_inst && alg_sel == OP_ALG_ALGSEL_ARC4)
-			continue;
 
 		/*
 		 * Check support for AES modes not available

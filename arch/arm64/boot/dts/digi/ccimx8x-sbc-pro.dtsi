@@ -76,6 +76,68 @@
 		status = "disabled";
 	};
 
+	lvds0_panel: lvds0_panel@0 {
+		compatible = "panel-lvds";
+		backlight = <&lvds_backlight0>;
+		power-supply = <&reg_5v_display>;
+		width-mm = <216>;
+		height-mm = <135>;
+		data-mapping = "jeida-18";
+		status = "disabled";
+
+		port {
+			panel_lvds0_in: endpoint {
+				remote-endpoint = <&lvds0_out>;
+			};
+		};
+
+		/* AUO G101EVN01.0 */
+		panel-timing {
+			clock-frequency = <68930000>;
+			hactive = <1280>;
+			vactive = <800>;
+			hfront-porch = <120>;
+			hback-porch = <0>;
+			hsync-len = <8>;
+			vback-porch = <10>;
+			vfront-porch = <0>;
+			vsync-len = <6>;
+			hsync-active = <1>;
+			vsync-active = <1>;
+		};
+	};
+
+	lvds1_panel: lvds1_panel@1 {
+		compatible = "panel-lvds";
+		backlight = <&lvds_backlight1>;
+		power-supply = <&reg_5v_display>;
+		width-mm = <216>;
+		height-mm = <135>;
+		data-mapping = "jeida-18";
+		status = "disabled";
+
+		port {
+			panel_lvds1_in: endpoint {
+				remote-endpoint = <&lvds1_out>;
+			};
+		};
+
+		/* AUO G101EVN01.0 */
+		panel-timing {
+			clock-frequency = <68930000>;
+			hactive = <1280>;
+			vactive = <800>;
+			hfront-porch = <120>;
+			hback-porch = <0>;
+			hsync-len = <8>;
+			vback-porch = <10>;
+			vfront-porch = <0>;
+			vsync-len = <6>;
+			hsync-active = <1>;
+			vsync-active = <1>;
+		};
+	};
+
 	regulators {
 		compatible = "simple-bus";
 		#address-cells = <1>;
@@ -123,8 +185,9 @@
 		reg_5v_display: regulator@4 {
 			compatible = "regulator-fixed";
 			reg = <4>;
-			pinctrl-names = "default";
+			pinctrl-names = "default", "sleep";
 			pinctrl-0 = <&pinctrl_reg_5v_display>;
+			pinctrl-1 = <&pinctrl_reg_5v_display_sleep>;
 			regulator-name = "5v_display";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
@@ -181,6 +244,16 @@
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			gpio = <&lsio_gpio4 5 GPIO_ACTIVE_LOW>;
+		};
+
+		/* Dummy regulator to keep PMIC powered via asserted MCA_IO9 */
+		pmic_pwrdn: regulator@9 {
+			compatible = "regulator-fixed";
+			reg = <9>;
+			regulator-name = "pmic-pwrdn";
+			gpio = <&mca_gpio 9 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+			regulator-always-on;
 		};
 	};
 
@@ -473,24 +546,26 @@
 	 */
 	lvds0_goodix_touch1: gt9271@14 {
 		compatible = "goodix,gt9271";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_goodix_lvds0>;
 		reg = <0x14>;
 		/* Interrupt for LVDS0 */
 		interrupt-parent = <&lsio_gpio3>;
 		interrupts = <20 IRQ_TYPE_EDGE_FALLING>;
-		irq-gpios = <&lsio_gpio3 20 GPIO_ACTIVE_LOW>;
-		reload-fw-on-resume;
+		irq-gpios = <&lsio_gpio3 20 GPIO_ACTIVE_HIGH>;
 		skip-firmware-request;
 		status = "disabled";
 	};
 
 	lvds0_goodix_touch2: gt9271@5d {
 		compatible = "goodix,gt9271";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_goodix_lvds0>;
 		reg = <0x5D>;
 		/* Interrupt for LVDS0 */
 		interrupt-parent = <&lsio_gpio3>;
 		interrupts = <20 IRQ_TYPE_EDGE_FALLING>;
-		irq-gpios = <&lsio_gpio3 20 GPIO_ACTIVE_LOW>;
-		reload-fw-on-resume;
+		irq-gpios = <&lsio_gpio3 20 GPIO_ACTIVE_HIGH>;
 		skip-firmware-request;
 		status = "disabled";
 	};
@@ -568,14 +643,14 @@
 
 	/* MIPI-CSI2 camera */
 	ov5640_mipi: ov5640_mipi@3c {
-		compatible = "ovti,ov5640_mipi_v3";
+		compatible = "ovti,ov5640";
 		reg = <0x3c>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_mipi>;
 		clocks = <&xtal24m>;
-		clock-names = "csi_mclk";
+		clock-names = "xclk";
 		csi_id = <0>;
-		rst-gpios = <&lsio_gpio3 21 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&lsio_gpio3 21 GPIO_ACTIVE_LOW>;
 		mclk = <24000000>;
 		mclk_source = <0>;
 		mipi_csi;
@@ -585,6 +660,7 @@
 			ov5640_mipi_ep: endpoint {
 				remote-endpoint = <&mipi_csi0_ep>;
 				data-lanes = <1 2>;
+				clocks-lanes = <0>;
 			};
 		};
 	};
@@ -617,37 +693,11 @@
 		digi,bits-per-pixel = <16>;
 		status = "disabled";
 
-		display-timings {
-			native-mode = <&lvds0_g101evn010_1>;
+		port@1 {
+			reg = <1>;
 
-			/* AUO G101EVN01.0 */
-			lvds0_g101evn010_1: timing@0 {
-				clock-frequency = <68930000>;
-				hactive = <1280>;
-				vactive = <800>;
-				hfront-porch = <120>;
-				hback-porch = <0>;
-				hsync-len = <8>;
-				vback-porch = <10>;
-				vfront-porch = <0>;
-				vsync-len = <6>;
-				hsync-active = <1>;
-				vsync-active = <1>;
-				de-active = <1>;
-				pixelclk-active = <0>;
-			};
-
-			/* Fusion 10" F10A-0102 */
-			lvds0_hsd101pfw2_1: timing@1 {
-				clock-frequency = <45000000>;
-				hactive = <1024>;
-				vactive = <600>;
-				hfront-porch = <0>;
-				hback-porch = <0>;
-				hsync-len = <176>;
-				vback-porch = <0>;
-				vfront-porch = <2>;
-				vsync-len = <23>;
+			lvds0_out: endpoint {
+				remote-endpoint = <&panel_lvds0_in>;
 			};
 		};
 	};
@@ -691,24 +741,26 @@
 	 */
 	lvds1_goodix_touch1: gt9271@14 {
 		compatible = "goodix,gt9271";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_goodix_lvds1>;
 		reg = <0x14>;
 		/* Interrupt for LVDS1 */
 		interrupt-parent = <&lsio_gpio3>;
 		interrupts = <19 IRQ_TYPE_EDGE_FALLING>;
-		irq-gpios = <&lsio_gpio3 19 GPIO_ACTIVE_LOW>;
-		reload-fw-on-resume;
+		irq-gpios = <&lsio_gpio3 19 GPIO_ACTIVE_HIGH>;
 		skip-firmware-request;
 		status = "disabled";
 	};
 
 	lvds1_goodix_touch2: gt9271@5d {
 		compatible = "goodix,gt9271";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_goodix_lvds1>;
 		reg = <0x5D>;
 		/* Interrupt for LVDS1 */
 		interrupt-parent = <&lsio_gpio3>;
 		interrupts = <19 IRQ_TYPE_EDGE_FALLING>;
-		irq-gpios = <&lsio_gpio3 19 GPIO_ACTIVE_LOW>;
-		reload-fw-on-resume;
+		irq-gpios = <&lsio_gpio3 19 GPIO_ACTIVE_HIGH>;
 		skip-firmware-request;
 		status = "disabled";
 	};
@@ -725,37 +777,11 @@
 		digi,bits-per-pixel = <16>;
 		status = "disabled";
 
-		display-timings {
-			native-mode = <&lvds1_g101evn010_1>;
+		port@1 {
+			reg = <1>;
 
-			/* AUO G101EVN01.0 */
-			lvds1_g101evn010_1: timing@0 {
-				clock-frequency = <68930000>;
-				hactive = <1280>;
-				vactive = <800>;
-				hfront-porch = <120>;
-				hback-porch = <0>;
-				hsync-len = <8>;
-				vback-porch = <10>;
-				vfront-porch = <0>;
-				vsync-len = <6>;
-				hsync-active = <1>;
-				vsync-active = <1>;
-				de-active = <1>;
-				pixelclk-active = <0>;
-			};
-
-			/* Fusion 10" F10A-0102 */
-			lvds1_hsd101pfw2_1: timing@1 {
-				clock-frequency = <45000000>;
-				hactive = <1024>;
-				vactive = <600>;
-				hfront-porch = <0>;
-				hback-porch = <0>;
-				hsync-len = <176>;
-				vback-porch = <0>;
-				vfront-porch = <2>;
-				vsync-len = <23>;
+	                lvds1_out: endpoint {
+				remote-endpoint = <&panel_lvds1_in>;
 			};
 		};
 	};
@@ -852,7 +878,7 @@
 /*
  * Remove MCA PWM node that uses MCA_IO5 and MCA_IO6 pads, since these lines
  * are being used as GPIOs for enabling voltage regulators on SBC Pro board.
- 
+
 /delete-node/ &{/i2c@5a800000/mca@63/pwms/pwm@1};*/
 
 &sai0 {
@@ -954,8 +980,6 @@
 
 	pinctrl_lvds0: lvds0grp {
 		fsl,pins = <
-			/* LVDS0 touch interrupt */
-			IMX8QXP_QSPI0B_DATA2_LSIO_GPIO3_IO20	0x06000020
 			/* LVDS0 PWM backlight */
 			IMX8QXP_MIPI_DSI0_GPIO0_00_MIPI_DSI0_PWM0_OUT	0x00000020
 		>;
@@ -963,8 +987,6 @@
 
 	pinctrl_lvds1: lvds1grp {
 		fsl,pins = <
-			/* LVDS1 touch interrupt */
-			IMX8QXP_QSPI0B_DATA1_LSIO_GPIO3_IO19       0x06000020
 			/* LVDS1 PWM backlight */
 			IMX8QXP_MIPI_DSI1_GPIO0_00_MIPI_DSI1_PWM0_OUT 0x00000020
 		>;
@@ -1210,6 +1232,13 @@
 		>;
 	};
 
+	pinctrl_reg_5v_display_sleep: reg_5v_display_grp_sleep {
+		fsl,pins = <
+			/* 5V regulator power enable, latch */
+			IMX8QXP_SPI3_SCK_LSIO_GPIO0_IO13		0x07800020
+		>;
+	};
+
 	pinctrl_reg_3v3_pcie: reg_3v3_pcie_grp {
 		fsl,pins = <
 			/* Voltage for PCIe domain (PCIE_VCC_EN) */
@@ -1314,6 +1343,20 @@
 	pinctrl_mipi: mipi {
 		fsl,pins = <
 			IMX8QXP_QSPI0B_DATA3_LSIO_GPIO3_IO21 0xC0000041
+		>;
+	};
+
+	pinctrl_goodix_lvds0: goodixgrplvds0 {
+		fsl,pins = <
+			/* LVDS0 touch interrupt */
+			IMX8QXP_QSPI0B_DATA2_LSIO_GPIO3_IO20	0x06000060
+		>;
+	};
+
+	pinctrl_goodix_lvds1: goodixgrplvds1 {
+		fsl,pins = <
+			/* LVDS1 touch interrupt */
+			IMX8QXP_QSPI0B_DATA1_LSIO_GPIO3_IO19	0x06000060
 		>;
 	};
 };

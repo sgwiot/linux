@@ -5,6 +5,7 @@
  */
 
 #include <dt-bindings/firmware/imx/rsrc.h>
+#include <linux/module.h>
 
 #include "clk-scu.h"
 
@@ -63,6 +64,8 @@ static u32 imx8qxp_clk_scu_rsrc_table[] = {
 	IMX_SC_R_ELCDIF_PLL,
 	IMX_SC_R_AUDIO_PLL_0,
 	IMX_SC_R_PI_0,
+	IMX_SC_R_PI_0_PWM_0,
+	IMX_SC_R_PI_0_I2C_0,
 	IMX_SC_R_PI_0_PLL,
 	IMX_SC_R_MIPI_0,
 	IMX_SC_R_MIPI_0_PWM_0,
@@ -87,3 +90,5 @@ const struct imx_clk_scu_rsrc_table imx_clk_scu_rsrc_imx8qxp = {
 	.rsrc = imx8qxp_clk_scu_rsrc_table,
 	.num = ARRAY_SIZE(imx8qxp_clk_scu_rsrc_table),
 };
+EXPORT_SYMBOL_GPL(imx_clk_scu_rsrc_imx8qxp);
+MODULE_LICENSE("GPL v2");

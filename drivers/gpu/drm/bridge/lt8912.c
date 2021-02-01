@@ -20,7 +20,6 @@
 #include <drm/drmP.h>
 #include <drm/drm_of.h>
 #include <drm/drm_atomic.h>
-#include <drm/drm_crtc_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_mipi_dsi.h>
@@ -29,13 +28,14 @@
 struct lt8912 {
 	struct drm_bridge bridge;
 	struct drm_connector connector;
-	const struct drm_display_mode *mode;
+	struct drm_display_mode mode;
 	struct device *dev;
 	struct mipi_dsi_device *dsi;
 	struct device_node *host_node;
 	u8 num_dsi_lanes;
 	u8 channel_id;
 	struct i2c_client *i2c;
+	u8 sink_is_hdmi;
 	struct regmap *regmap[3];
 	struct gpio_desc *reset_n;
 	struct gpio_desc *gpiod_int;
@@ -62,18 +62,22 @@ static inline struct lt8912 *connector_to_lt8912(struct drm_connector *c)
 static void lt8912_init(struct lt8912 *lt)
 {
 	u8 lanes = lt->dsi->lanes;
-	const struct drm_display_mode *mode = lt->mode;
+	const struct drm_display_mode *mode = &lt->mode;
 	u32 hactive, hfp, hsync, hbp, vfp, vsync, vbp, htotal, vtotal;
+	unsigned int hsync_activehigh, vsync_activehigh, reg;
 	unsigned int version[2];
 
+	dev_info(lt->dev, DRM_MODE_FMT "\n", DRM_MODE_ARG(mode));
 	/* TODO: lvds output init */
 
 	hactive = mode->hdisplay;
 	hfp = mode->hsync_start - mode->hdisplay;
 	hsync = mode->hsync_end - mode->hsync_start;
+	hsync_activehigh = !!(mode->flags & DRM_MODE_FLAG_PHSYNC);
 	hbp = mode->htotal - mode->hsync_end;
 	vfp = mode->vsync_start - mode->vdisplay;
 	vsync = mode->vsync_end - mode->vsync_start;
+	vsync_activehigh = !!(mode->flags & DRM_MODE_FLAG_PVSYNC);
 	vbp = mode->vtotal - mode->vsync_end;
 	htotal = mode->htotal;
 	vtotal = mode->vtotal;
@@ -115,9 +119,11 @@ static void lt8912_init(struct lt8912 *lt)
 	regmap_write(lt->regmap[0], 0x3f, 0xd4);
 	regmap_write(lt->regmap[0], 0x41, 0x3c);
 
+	/* MipiBasicSet */
 	regmap_write(lt->regmap[1], 0x12, 0x04);
 	regmap_write(lt->regmap[1], 0x13, lanes % 4);
 	regmap_write(lt->regmap[1], 0x14, 0x00);
+
 	regmap_write(lt->regmap[1], 0x15, 0x00);
 	regmap_write(lt->regmap[1], 0x1a, 0x03);
 	regmap_write(lt->regmap[1], 0x1b, 0x03);
@@ -144,6 +150,10 @@ static void lt8912_init(struct lt8912 *lt)
 	regmap_write(lt->regmap[1], 0x3d, hbp >> 8);
 	regmap_write(lt->regmap[1], 0x3e, hfp % 0x100);
 	regmap_write(lt->regmap[1], 0x3f, hfp >> 8);
+	regmap_read(lt->regmap[0], 0xab, &reg);
+	reg &= 0xfc;
+	reg |= (hsync_activehigh < 1) | vsync_activehigh;
+	regmap_write(lt->regmap[0], 0xab, reg);
 
 	/* DDSConfig */
 	regmap_write(lt->regmap[1], 0x4e, 0x6a);
@@ -193,12 +203,7 @@ static void lt8912_init(struct lt8912 *lt)
 	regmap_write(lt->regmap[1], 0x1e, 0x4f);
 	regmap_write(lt->regmap[1], 0x51, 0x00);
 
-	/* mipi rx soft reset */
-	regmap_write(lt->regmap[0], 0x03, 0x7f);
-	usleep_range(100000, 110000);
-	regmap_write(lt->regmap[0], 0x03, 0xff);
-
-	regmap_write(lt->regmap[0], 0xb2, 0x01);
+	regmap_write(lt->regmap[0], 0xb2, lt->sink_is_hdmi);
 
 	/* Audio Disable */
 	regmap_write(lt->regmap[2], 0x06, 0x00);
@@ -217,23 +222,6 @@ static void lt8912_init(struct lt8912 *lt)
 	usleep_range(10000, 20000);
 	regmap_write(lt->regmap[1], 0x51, 0x00);
 
-}
-
-static void lt8912_exit(struct lt8912 *lt)
-{
-	regmap_write(lt->regmap[0], 0x08, 0x00);
-	regmap_write(lt->regmap[0], 0x09, 0x81);
-	regmap_write(lt->regmap[0], 0x0a, 0x00);
-	regmap_write(lt->regmap[0], 0x0b, 0x20);
-	regmap_write(lt->regmap[0], 0x0c, 0x00);
-
-	regmap_write(lt->regmap[0], 0x41, 0xbd);
-
-	regmap_write(lt->regmap[0], 0x31, 0x00);
-	regmap_write(lt->regmap[0], 0x32, 0x00);
-	regmap_write(lt->regmap[0], 0x33, 0x00);
-	regmap_write(lt->regmap[0], 0x37, 0x00);
-	regmap_write(lt->regmap[0], 0x38, 0x00);
 }
 
 int lt8912_parse_dt(struct device_node *np, struct lt8912 *lt)
@@ -256,7 +244,7 @@ int lt8912_parse_dt(struct device_node *np, struct lt8912 *lt)
 	return 0;
 }
 
-static void lt8912_power_on(struct lt8912 *lt)
+static void lt8912_wakeup(struct lt8912 *lt)
 {
 	int ret;
 
@@ -279,10 +267,25 @@ static void lt8912_power_on(struct lt8912 *lt)
 	gpiod_direction_output(lt->reset_n, 1);
 	msleep(120);
 	gpiod_direction_output(lt->reset_n, 0);
+
+	regmap_write(lt->regmap[0], 0x08,0xff); /* enable clk gating */
+	regmap_write(lt->regmap[0], 0x41,0x3c); /* MIPI Rx Power On */
+	regmap_write(lt->regmap[0], 0x05,0xfb); /* DDS logical reset */
+	regmap_write(lt->regmap[0], 0x05,0xff);
+	regmap_write(lt->regmap[0], 0x03,0x7f); /* MIPI RX logical reset */
+	usleep_range(10000, 20000);
+	regmap_write(lt->regmap[0], 0x03,0xff);
+	regmap_write(lt->regmap[0], 0x32,0xa1);
+	regmap_write(lt->regmap[0], 0x33,0x03);
 }
 
-static void lt8912_power_off(struct lt8912 *lt)
+static void lt8912_sleep(struct lt8912 *lt)
 {
+	regmap_write(lt->regmap[0], 0x32,0xa0);
+	regmap_write(lt->regmap[0], 0x33,0x00); /* Disable HDMI output. */
+	regmap_write(lt->regmap[0], 0x41,0x3d); /* MIPI Rx Power Down. */
+	regmap_write(lt->regmap[0], 0x08,0x00); /* disable DDS clk. */
+
 	gpiod_direction_output(lt->reset_n, 1);
 
 	if (lt->vdd2)
@@ -295,8 +298,9 @@ static void lt8912_power_off(struct lt8912 *lt)
 static irqreturn_t lt8912_hpd_threaded_handler(int unused, void *data)
 {
 	struct lt8912 *lt = data;
+	struct drm_connector *connector = &lt->connector;
 
-	drm_helper_hpd_irq_event(lt->connector.dev);
+	drm_helper_hpd_irq_event(connector->dev);
 
 	return IRQ_HANDLED;
 }
@@ -371,50 +375,57 @@ static int lt8912_connector_get_modes(struct drm_connector *connector)
 		if (edid) {
 			drm_connector_update_edid_property(connector, edid);
 			num = drm_add_edid_modes(connector, edid);
+			lt->sink_is_hdmi = !!drm_detect_hdmi_monitor(edid);
 		} else {
 			dev_err(lt->dev, "failed to get display EDID data\n");
 		}
-
-		ret = drm_display_info_set_bus_formats(&connector->display_info,
-						       &bus_format, 1);
-		if (ret)
-			return ret;
 	}
 
+	ret = drm_display_info_set_bus_formats(&connector->display_info,
+					       &bus_format, 1);
+	if (ret)
+		return ret;
+
 	return num;
+}
+
+static enum drm_mode_status lt8912_connector_mode_valid(struct drm_connector *connector,
+			     struct drm_display_mode *mode)
+{
+	if (mode->clock > 150000)
+		return MODE_CLOCK_HIGH;
+
+	if (mode->hdisplay > 1920)
+		return MODE_BAD_HVALUE;
+
+	if (mode->vdisplay > 1080)
+		return MODE_BAD_VVALUE;
+
+	return MODE_OK;
 }
 
 static const struct drm_connector_helper_funcs lt8912_connector_helper_funcs = {
 	.get_modes = lt8912_connector_get_modes,
 	.best_encoder = lt8912_connector_best_encoder,
+	.mode_valid = lt8912_connector_mode_valid,
 };
 
 static void lt8912_bridge_post_disable(struct drm_bridge *bridge)
 {
 	struct lt8912 *lt = bridge_to_lt8912(bridge);
-
-	lt8912_power_off(lt);
-}
-
-static void lt8912_bridge_disable(struct drm_bridge *bridge)
-{
-	struct lt8912 *lt = bridge_to_lt8912(bridge);
-
-	lt8912_exit(lt);
+	lt8912_sleep(lt);
 }
 
 static void lt8912_bridge_enable(struct drm_bridge *bridge)
 {
 	struct lt8912 *lt = bridge_to_lt8912(bridge);
-
 	lt8912_init(lt);
 }
 
 static void lt8912_bridge_pre_enable(struct drm_bridge *bridge)
 {
 	struct lt8912 *lt = bridge_to_lt8912(bridge);
-
-	lt8912_power_on(lt);
+	lt8912_wakeup(lt);
 }
 
 static void lt8912_bridge_mode_set(struct drm_bridge *bridge,
@@ -423,7 +434,7 @@ static void lt8912_bridge_mode_set(struct drm_bridge *bridge,
 {
 	struct lt8912 *lt = bridge_to_lt8912(bridge);
 
-	lt->mode = mode;
+	drm_mode_copy(&lt->mode, adj);
 }
 
 static int lt8912_bridge_attach(struct drm_bridge *bridge)
@@ -432,7 +443,7 @@ static int lt8912_bridge_attach(struct drm_bridge *bridge)
 	struct drm_connector *connector = &lt->connector;
 	int ret;
 
-	lt->connector.polled = DRM_CONNECTOR_POLL_HPD;
+	connector->polled = DRM_CONNECTOR_POLL_HPD;
 
 	ret = drm_connector_init(bridge->dev, connector,
 				 &lt8912_connector_funcs,
@@ -446,6 +457,9 @@ static int lt8912_bridge_attach(struct drm_bridge *bridge)
 	drm_connector_attach_encoder(connector, bridge->encoder);
 
 	ret = lt8912_attach_dsi(lt);
+
+	enable_irq(lt->hpd_irq);
+
 	return ret;
 }
 
@@ -454,7 +468,6 @@ static const struct drm_bridge_funcs lt8912_bridge_funcs = {
 	.mode_set = lt8912_bridge_mode_set,
 	.pre_enable = lt8912_bridge_pre_enable,
 	.enable = lt8912_bridge_enable,
-	.disable = lt8912_bridge_disable,
 	.post_disable = lt8912_bridge_post_disable,
 };
 
@@ -527,9 +540,6 @@ int lt8912_attach_dsi(struct lt8912 *lt)
 
 	dsi->lanes = lt->num_dsi_lanes;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-/* adv7533	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE |
-			  MIPI_DSI_MODE_EOT_PACKET | MIPI_DSI_MODE_VIDEO_HSE;
-*/
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
 			  MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_EOT_PACKET;
 
@@ -620,7 +630,7 @@ static int lt8912_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 
 		ret = devm_request_threaded_irq(dev, lt->hpd_irq, NULL,
 						lt8912_hpd_threaded_handler,
-						IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+						IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 						"lt8912-irq", lt);
 		if (ret) {
 			dev_err(dev,
@@ -628,6 +638,7 @@ static int lt8912_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 				ret);
 			return ret;
 		}
+		disable_irq(lt->hpd_irq);
 	}
 
 	lt->i2c = i2c;
@@ -650,8 +661,6 @@ static int lt8912_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	of_node_put(endpoint);
 	of_node_put(lt->host_node);
 
-//	mipi_dsi_set_drvdata(lt->dsi, lt);
-
 	lt->bridge.funcs = &lt8912_bridge_funcs;
 	lt->bridge.of_node = dev->of_node;
 	drm_bridge_add(&lt->bridge);
@@ -663,6 +672,7 @@ static int lt8912_remove(struct i2c_client *i2c)
 {
 	struct lt8912 *lt = i2c_get_clientdata(i2c);
 
+	lt8912_sleep(lt);
 	mipi_dsi_detach(lt->dsi);
 	drm_bridge_remove(&lt->bridge);
 

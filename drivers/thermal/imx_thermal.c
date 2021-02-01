@@ -585,10 +585,10 @@ static void imx_init_temp_grade(struct platform_device *pdev, u32 ocotp_mem0)
 
 	/*
 	 * Set the critical trip point at 5 °C under max
-	 * Set the passive trip point at 10 °C under max (changeable via sysfs)
+	 * Set the passive trip point at 20 °C under max (changeable via sysfs)
 	 */
 	data->temp_critical = data->temp_max - (1000 * 5);
-	data->temp_passive = data->temp_max - (1000 * 10);
+	data->temp_passive = data->temp_max - (1000 * 20);
 }
 
 static int imx_init_from_tempmon_data(struct platform_device *pdev)
@@ -683,7 +683,7 @@ MODULE_DEVICE_TABLE(of, of_imx_thermal_match);
 static int imx_thermal_register_legacy_cooling(struct imx_thermal_data *data)
 {
 	struct device_node *np;
-	int ret;
+	int ret = 0;
 
 	data->policy = cpufreq_cpu_get(0);
 	if (!data->policy) {
@@ -698,6 +698,7 @@ static int imx_thermal_register_legacy_cooling(struct imx_thermal_data *data)
 		if (IS_ERR(data->cdev[0])) {
 			ret = PTR_ERR(data->cdev[0]);
 			cpufreq_cpu_put(data->policy);
+			of_node_put(np);
 			return ret;
 		}
 	}
@@ -710,10 +711,11 @@ static int imx_thermal_register_legacy_cooling(struct imx_thermal_data *data)
 				ret);
 			cpufreq_cooling_unregister(data->cdev[0]);
 		}
-		return ret;
 	}
 
-	return 0;
+	of_node_put(np);
+
+	return ret;
 }
 
 static void imx_thermal_unregister_legacy_cooling(struct imx_thermal_data *data)

@@ -282,6 +282,13 @@
 		method = "smc";
 	};
 
+	pmu {
+		compatible = "arm,armv8-pmuv3";
+		interrupts = <GIC_PPI 7
+			     (GIC_CPU_MASK_SIMPLE(6) | IRQ_TYPE_LEVEL_HIGH)>;
+		interrupt-affinity = <&A53_0>, <&A53_1>, <&A53_2>, <&A53_3>;
+	};
+
 	timer {
 		compatible = "arm,armv8-timer";
 		interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(6) | IRQ_TYPE_LEVEL_LOW)>,
@@ -646,6 +653,8 @@
 			caam_snvs: caam-snvs@30370000 {
 				compatible = "fsl,imx6q-caam-snvs";
 				reg = <0x30370000 0x10000>;
+				clocks = <&clk IMX8MN_CLK_SNVS_ROOT>;
+				clock-names = "ipg";
 			};
 
 			snvs: snvs@30370000 {
@@ -658,6 +667,7 @@
 					offset = <0x34>;
 					interrupts = <GIC_SPI 19 IRQ_TYPE_LEVEL_HIGH>,
 						     <GIC_SPI 20 IRQ_TYPE_LEVEL_HIGH>;
+					clocks = <&clk IMX8MN_CLK_SNVS_ROOT>;
 					clock-names = "snvs-rtc";
 				};
 
@@ -665,6 +675,8 @@
 					compatible = "fsl,sec-v4.0-pwrkey";
 					regmap = <&snvs>;
 					interrupts = <GIC_SPI 4 IRQ_TYPE_LEVEL_HIGH>;
+					clocks = <&clk IMX8MN_CLK_SNVS_ROOT>;
+					clock-names = "snvs";
 					linux,keycode = <KEY_POWER>;
 					wakeup-source;
 					status = "disabled";
@@ -1153,6 +1165,12 @@
 			#interrupt-cells = <3>;
 			interrupt-controller;
 			interrupts = <GIC_PPI 9 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		ddr-pmu@3d800000 {
+			compatible = "fsl,imx8mn-ddr-pmu", "fsl,imx8m-ddr-pmu";
+			reg = <0x3d800000 0x400000>;
+			interrupts = <GIC_SPI 98 IRQ_TYPE_LEVEL_HIGH>;
 		};
 	};
 

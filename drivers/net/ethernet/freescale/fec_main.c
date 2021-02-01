@@ -64,8 +64,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/busfreq-imx.h>
 #include <linux/prefetch.h>
-#include <linux/mfd/syscon.h>
-#include <linux/regmap.h>
 #include <soc/imx/cpuidle.h>
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
@@ -1146,7 +1144,8 @@ fec_restart(struct net_device *ndev)
 static int fec_enet_ipc_handle_init(struct fec_enet_private *fep)
 {
 	if (!(of_machine_is_compatible("fsl,imx8qm") ||
-	    of_machine_is_compatible("fsl,imx8qxp")))
+	    of_machine_is_compatible("fsl,imx8qxp") ||
+	    of_machine_is_compatible("fsl,imx8dxl")))
 		return 0;
 
 	return imx_scu_get_handle(&fep->ipc_handle);
@@ -1907,6 +1906,29 @@ static int fec_enet_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
     }
 
 	reinit_completion(&fep->mdio_done);
+
+	/*
+	 * Add a really small delay for a specific corner case, which happens
+	 * when the PHY attempts to negotiate the link speed after resuming
+	 * from suspend-to-ram on the ccimx6sbc and ccimx6qpsbc platforms.
+	 *
+	 * Before any PHY autonegotiation, the phy_device driver will sanitize
+	 * the negotiation parameters, which implies reading and slightly
+	 * modifying the MII_ADVERTISE register's contents. In some cases, when
+	 * reading the register right after resuming from suspend, its contents
+	 * will be 0xffff (an invalid value). Even if the register changes back
+	 * to its original value shortly after, the kernel will overwrite it
+	 * with a modified version of the erroneous value. When this happens,
+	 * the autonegotiation will never complete and the ethernet interface
+	 * will stop working.
+	 *
+	 * To avoid this situation, delay the MII_ADVERTISE read operation just
+	 * enough to let the register's contents stabilize before reading them.
+	 */
+	if (regnum == MII_ADVERTISE &&
+	    (of_machine_is_compatible("digi,ccimx6qpsbc") ||
+	     of_machine_is_compatible("digi,ccimx6sbc")))
+		usleep_range(1, 2);
 
 	if (is_c45) {
 		frame_start = FEC_MMFR_ST_C45;
@@ -4150,7 +4172,7 @@ static int __maybe_unused fec_resume(struct device *dev)
 {
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct fec_enet_private *fep = netdev_priv(ndev);
-	int ret;
+	int ret = 0;
 	int val;
 
 	if (fep->reg_mdio && !(fep->wol_flag & FEC_WOL_FLAG_ENABLE)) {

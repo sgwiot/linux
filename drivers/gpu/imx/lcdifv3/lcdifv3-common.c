@@ -369,8 +369,12 @@ void lcdifv3_set_mode(struct lcdifv3_soc *lcdifv3, struct videomode *vmode)
 {
 	const struct of_device_id *of_id =
 			of_match_device(imx_lcdifv3_dt_ids, lcdifv3->dev);
-	const struct lcdifv3_soc_pdata *soc_pdata = of_id->data;
+	const struct lcdifv3_soc_pdata *soc_pdata;
 	u32 disp_size, hsyn_para, vsyn_para, vsyn_hsyn_width, ctrldescl0_1;
+
+	if (unlikely(!of_id))
+		return;
+	soc_pdata = of_id->data;
 
 	/* set pixel clock rate */
 	clk_disable_unprepare(lcdifv3->clk_pix);
@@ -450,6 +454,17 @@ void lcdifv3_set_mode(struct lcdifv3_soc *lcdifv3, struct videomode *vmode)
 }
 EXPORT_SYMBOL(lcdifv3_set_mode);
 
+void lcdifv3_en_shadow_load(struct lcdifv3_soc *lcdifv3)
+{
+	u32 ctrldescl0_5;
+
+	ctrldescl0_5 = readl(lcdifv3->base + LCDIFV3_CTRLDESCL0_5);
+	ctrldescl0_5 |= CTRLDESCL0_5_SHADOW_LOAD_EN;
+
+	writel(ctrldescl0_5, lcdifv3->base + LCDIFV3_CTRLDESCL0_5);
+}
+EXPORT_SYMBOL(lcdifv3_en_shadow_load);
+
 void lcdifv3_enable_controller(struct lcdifv3_soc *lcdifv3)
 {
 	u32 disp_para, ctrldescl0_5;
@@ -460,10 +475,6 @@ void lcdifv3_enable_controller(struct lcdifv3_soc *lcdifv3)
 	/* disp on */
 	disp_para |= DISP_PARA_DISP_ON;
 	writel(disp_para, lcdifv3->base + LCDIFV3_DISP_PARA);
-
-	/* enable shadow load */
-	ctrldescl0_5 |= CTRLDESCL0_5_SHADOW_LOAD_EN;
-	writel(ctrldescl0_5, lcdifv3->base + LCDIFV3_CTRLDESCL0_5);
 
 	/* enable layer dma */
 	ctrldescl0_5 |= CTRLDESCL0_5_EN;
@@ -611,11 +622,18 @@ static int imx_lcdifv3_probe(struct platform_device *pdev)
 	struct lcdifv3_soc *lcdifv3;
 	struct resource *res;
 	struct regmap *blk_ctl;
-	const struct of_device_id *of_id =
-			of_match_device(imx_lcdifv3_dt_ids, dev);
-	const struct lcdifv3_soc_pdata *soc_pdata = of_id->data;
+	const struct of_device_id *of_id;
+	const struct lcdifv3_soc_pdata *soc_pdata;
 
 	dev_dbg(dev, "%s: probe begin\n", __func__);
+
+	of_id = of_match_device(imx_lcdifv3_dt_ids, dev);
+	if (!of_id) {
+		dev_err(&pdev->dev, "OF data missing\n");
+		return -EINVAL;
+	}
+
+	soc_pdata = of_id->data;
 
 	lcdifv3 = devm_kzalloc(dev, sizeof(*lcdifv3), GFP_KERNEL);
 	if (!lcdifv3) {
@@ -756,7 +774,8 @@ static int imx_lcdifv3_resume(struct device *dev)
 #endif
 
 static const struct dev_pm_ops imx_lcdifv3_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(imx_lcdifv3_suspend, imx_lcdifv3_resume)
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(imx_lcdifv3_suspend,
+				     imx_lcdifv3_resume)
 	SET_RUNTIME_PM_OPS(imx_lcdifv3_runtime_suspend,
 			   imx_lcdifv3_runtime_resume, NULL)
 };

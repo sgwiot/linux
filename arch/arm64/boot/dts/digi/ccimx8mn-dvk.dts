@@ -281,11 +281,6 @@
 	sda-gpios = <&gpio5 17 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 
-	/*
-	 * The max98089 sound codec uses the same I2C address than the fusion touch
-	 * controller, so when enabling this node, you need to also disable the
-	 * max98089 node.
-	 */
 	fusion_touch: fusion@10 {
 		compatible = "touchrev,fusion-touch";
 		reg = <0x10>;
@@ -311,28 +306,19 @@
 		vin-supply = <&reg_5v_board>;
 	};
 
-	max98089: codec@10 {
-		compatible = "maxim,max98089";
-		reg = <0x10>;
-		clocks = <&clk IMX8MN_CLK_SAI2_ROOT>;
-		clock-names = "mclk";
-		vcc-supply = <&reg_3v3_audio>;
-		dvdd-supply = <&reg_1v8_ext>;
-	};
-
 	/* MIPI-CSI camera */
 	ov5640_mipi: ov5640_mipi@3c {
-		compatible = "ovti,ov5640_mipi_v3";
+		compatible = "ovti,ov5640";
 		reg = <0x3c>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_mipi>;
 		clocks = <&clk IMX8MN_CLK_CLKO1>;
-		clock-names = "csi_mclk";
+		clock-names = "xclk";
 		assigned-clocks = <&clk IMX8MN_CLK_CLKO1>;
 		assigned-clock-parents = <&clk IMX8MN_CLK_24M>;
 		assigned-clock-rates = <24000000>;
 		csi_id = <0>;
-		rst-gpios = <&gpio1 12 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&gpio1 12 GPIO_ACTIVE_LOW>;
 		mclk = <24000000>;
 		mclk_source = <0>;
 		mipi_csi;
@@ -340,6 +326,8 @@
 		port {
 			ov5640_mipi_ep: endpoint {
 				remote-endpoint = <&mipi_csi0_ep>;
+				data-lanes = <1 2>;
+				clocks-lanes = <0>;
 			};
 		};
 	};
@@ -422,10 +410,11 @@
 		compatible = "lontium,lt8912";
 		reg = <0x48>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_lt8912>;
+		pinctrl-0 = <&pinctrl_lt8912>, <&pinctrl_lt8912_hpd>;
 		reset-gpios = <&gpio3 7 GPIO_ACTIVE_LOW>;
-		hpd-gpios = <&gpio3 9 GPIO_ACTIVE_HIGH>;
+		hpd-gpios = <&gpio3 8 GPIO_ACTIVE_HIGH>;
 		digi,dsi-lanes = <4>;
+		no-edid;
 		status = "okay";
 
 		port {
@@ -434,6 +423,53 @@
 				remote-endpoint = <&mipi_dsi_hdmi_out>;
 			};
 		};
+
+		display-timings {
+			native-mode = <&timing1>;
+
+			/* High Definition */
+			timing0: timing0 {
+				clock-frequency = <74250000>;
+				hactive = <1280>;
+				vactive = <720>;
+				hfront-porch = <110>;
+				hsync-len = <40>;
+				hback-porch = <220>;
+				vfront-porch = <5>;
+				vsync-len = <5>;
+				vback-porch = <20>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <0>;
+				pixelclk-active = <0>;
+			};
+
+			/* Full HD */
+			timing1: timing1 {
+				clock-frequency = <148500000>;
+				hactive = <1920>;
+				vactive = <1080>;
+				hfront-porch = <88>;
+				hsync-len = <44>;
+				hback-porch = <148>;
+				vfront-porch = <36>;
+				vsync-len = <5>;
+				vback-porch = <4>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <0>;
+				pixelclk-active = <0>;
+			};
+		};
+	};
+
+	max98089: codec@10 {
+		compatible = "maxim,max98089";
+		reg = <0x10>;
+		clocks = <&clk IMX8MN_CLK_SAI2_ROOT>;
+		clock-names = "mclk";
+		vcc-supply = <&reg_3v3_audio>;
+		dvdd-supply = <&reg_1v8_ext>;
 	};
 };
 
@@ -510,6 +546,21 @@
 	status = "okay";
 };
 
+/* Power LED on MCA_IO13 */
+&mca_led {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	led@0 {
+		reg = <0>;
+		label = "power:green";
+		io = <13>;
+		linux,default-trigger = "default-on";
+		retain-state-suspended;
+	};
+};
+
 &mipi_csi_1 {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -546,6 +597,24 @@
 	};
 };
 
+&pwm2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm2>;
+	status = "okay";
+};
+
+&pwm3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm3>;
+	status = "okay";
+};
+
+&pwm4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm4>;
+	status = "okay";
+};
+
 &sai2 {
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_sai2>;
@@ -571,17 +640,23 @@
 	assigned-clock-parents = <&clk IMX8MN_SYS_PLL1_80M>;
 
 	/* RS-485 mode (comment these lines to use this UART in RS232 mode) */
-	pinctrl-0 = <&pinctrl_uart3_rs485>;
+	pinctrl-0 = <&pinctrl_uart3_rs485>, <&pinctrl_uart3_rs485_re>;
 	linux,rs485-enabled-at-boot-time;
 	rs485-rts-active-high;
-	rts-gpios = <&gpio1 3 GPIO_ACTIVE_HIGH>;
+	rts-gpios = <&gpio5 8 GPIO_ACTIVE_HIGH>;
 	/* Disable DMA on this port when using rs485 */
 	/delete-property/dmas;
 	/delete-property/dma-names;
 
-	/* RS-232 mode (uncomment these lines to use this UART in RS232 mode) */
-	//pinctrl-0 = <&pinctrl_uart3>;
+	/*
+	 * RS-232 mode (uncomment these lines to use this UART in RS232 mode).
+	 * Choose the ones that match your DVK version.
+	 */
 	//fsl,uart-has-rtscts;
+	//For DVK: version >= 3
+	//pinctrl-0 = <&pinctrl_uart3>, <&pinctrl_uart3_re_disable>;
+	//For DVK: version <= 2
+	//pinctrl-0 = <&pinctrl_uart3>, <&pinctrl_uart3_re_disable_v1_v2>;
 
 	status = "okay";
 };
@@ -611,14 +686,15 @@
 /* Micro SD card */
 &usdhc2 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
-	pinctrl-0 = <&pinctrl_usdhc2>, <&pinctrl_usdhc2_gpio>;
-	pinctrl-1 = <&pinctrl_usdhc2_100mhz>, <&pinctrl_usdhc2_gpio>;
-	pinctrl-2 = <&pinctrl_usdhc2_200mhz>, <&pinctrl_usdhc2_gpio>;
+	pinctrl-0 = <&pinctrl_usdhc2>, <&pinctrl_usdhc2_gpio>,
+		    <&pinctrl_usdhc2_vsel>;
+	pinctrl-1 = <&pinctrl_usdhc2_100mhz>, <&pinctrl_usdhc2_gpio>,
+		    <&pinctrl_usdhc2_vsel>;
+	pinctrl-2 = <&pinctrl_usdhc2_200mhz>, <&pinctrl_usdhc2_gpio>,
+		    <&pinctrl_usdhc2_vsel>;
 	bus-width = <4>;
 	no-1-8-v;
 	cd-gpios = <&gpio2 12 GPIO_ACTIVE_HIGH>;
-	/* Assert GPIO5_IO1 low for 3V3 (default) or high for 1.8V */
-	pinctrl-assert-gpios = <&gpio5 1 GPIO_ACTIVE_LOW>;
 	status = "okay";
 };
 
@@ -633,16 +709,10 @@
 			MX8MN_IOMUXC_GPIO1_IO10_GPIO1_IO10	0x16
 			/* GPIO1_IO11 on expansion connector */
 			MX8MN_IOMUXC_GPIO1_IO11_GPIO1_IO11	0x16
-			/* GPIO1_IO13 on expansion connector */
-			MX8MN_IOMUXC_GPIO1_IO13_GPIO1_IO13	0x16
-			/* GPIO1_IO14 on expansion connector */
-			MX8MN_IOMUXC_GPIO1_IO14_GPIO1_IO14	0x16
-			/* GPIO1_IO15 on expansion connector */
-			MX8MN_IOMUXC_GPIO1_IO15_GPIO1_IO15	0x16
 			/* User LED 3 */
 			MX8MN_IOMUXC_SD2_RESET_B_GPIO2_IO19	0x16
 			/* User button 2 */
-			MX8MN_IOMUXC_SD2_WP_GPIO2_IO20	0x16
+			MX8MN_IOMUXC_SD2_WP_GPIO2_IO20	0x156
 			/*
 			 * Expansion I2C port IRQ.
 			 * Remove if you plan on using this line for a device
@@ -751,6 +821,13 @@
 		>;
 	};
 
+	pinctrl_lt8912_hpd: lt8912-hpd {
+		fsl,pins = <
+			/* Hotplug detect */
+			MX8MN_IOMUXC_NAND_DATA02_GPIO3_IO8	0x19
+		>;
+	};
+
 	pinctrl_lvds: lvdsgrp {
 		fsl,pins = <
 			/* SN65DSI83 enable */
@@ -770,6 +847,24 @@
 		fsl,pins = <
 			/* MIPI_CSI_RESET_N */
 			MX8MN_IOMUXC_GPIO1_IO12_GPIO1_IO12 0x19
+		>;
+	};
+
+	pinctrl_pwm2: pwm2grp {
+		fsl,pins = <
+			MX8MN_IOMUXC_GPIO1_IO13_PWM2_OUT        0x16
+		>;
+	};
+
+	pinctrl_pwm3: pwm3grp {
+		fsl,pins = <
+			MX8MN_IOMUXC_GPIO1_IO14_PWM3_OUT        0x16
+		>;
+	};
+
+	pinctrl_pwm4: pwm4grp {
+		fsl,pins = <
+			MX8MN_IOMUXC_GPIO1_IO15_PWM4_OUT        0x16
 		>;
 	};
 
@@ -856,6 +951,21 @@
 			MX8MN_IOMUXC_ECSPI1_MOSI_UART3_DCE_TX		0x140
 			MX8MN_IOMUXC_ECSPI1_SS0_UART3_DCE_RTS_B		0x140
 			MX8MN_IOMUXC_ECSPI1_MISO_UART3_DCE_CTS_B	0x140
+		>;
+	};
+
+	pinctrl_uart3_re_disable: uart3grp_re_disable {
+		fsl,pins = <
+			/*
+			 * Configure RS485 RE#/DE line as pull-up to disable
+			 * RS485 transceiver.
+			 */
+			MX8MN_IOMUXC_ECSPI1_MISO_GPIO5_IO8		0x140
+		>;
+	};
+
+	pinctrl_uart3_re_disable_v1_v2: uart3grp_re_disable_v1_v2 {
+		fsl,pins = <
 			/*
 			 * Configure RS485 RE#/DE line as pull-up to disable
 			 * RS485 transceiver.
@@ -868,6 +978,18 @@
 		fsl,pins = <
 			MX8MN_IOMUXC_ECSPI1_SCLK_UART3_DCE_RX		0x140
 			MX8MN_IOMUXC_ECSPI1_MOSI_UART3_DCE_TX		0x140
+		>;
+	};
+
+	pinctrl_uart3_rs485_re: uart3_rs485grp_re {
+		fsl,pins = <
+			/* RS485 RE#/DE line */
+			MX8MN_IOMUXC_ECSPI1_MISO_GPIO5_IO8		0x16
+		>;
+	};
+
+	pinctrl_uart3_rs485_re_v1_v2: uart3_rs485grp_re_v1_v2 {
+		fsl,pins = <
 			/* RS485 RE#/DE line */
 			MX8MN_IOMUXC_GPIO1_IO03_GPIO1_IO3		0x16
 		>;
@@ -893,8 +1015,18 @@
 		fsl,pins = <
 			/* Card detect */
 			MX8MN_IOMUXC_SD2_CD_B_GPIO2_IO12	0x1c4
-			/* MUX_VSELECT */
-			MX8MN_IOMUXC_SAI3_TXD_GPIO5_IO1		0x84
+		>;
+	};
+
+	pinctrl_usdhc2_vsel: usdhc2grp_vsel {
+		fsl,pins = <
+			MX8MN_IOMUXC_GPIO1_IO04_USDHC2_VSELECT	0x1d0
+		>;
+	};
+
+	pinctrl_usdhc2_vsel_somv1_dvkv1: usdhc2grp_vsel_somv1_dvkv1 {
+		fsl,pins = <
+			MX8MN_IOMUXC_SAI3_TXD_GPIO5_IO1         0x84
 		>;
 	};
 

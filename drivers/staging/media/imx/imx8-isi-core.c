@@ -32,46 +32,6 @@ static const struct soc_device_attribute imx8_soc[] = {
 
 static const struct of_device_id mxc_isi_of_match[];
 
-struct mxc_isi_dev *mxc_isi_get_hostdata(struct platform_device *pdev)
-{
-	struct mxc_isi_dev *mxc_isi;
-
-	if (!pdev || !pdev->dev.parent)
-		return NULL;
-
-	device_lock(pdev->dev.parent);
-	mxc_isi = (struct mxc_isi_dev *)dev_get_drvdata(pdev->dev.parent);
-	if (!mxc_isi) {
-		dev_err(&pdev->dev, "Cann't get host data\n");
-		device_unlock(pdev->dev.parent);
-		return NULL;
-	}
-	device_unlock(pdev->dev.parent);
-
-	return mxc_isi;
-}
-
-struct device *mxc_isi_dev_get_parent(struct platform_device *pdev)
-{
-	struct device *dev = &pdev->dev;
-	struct device_node *parent;
-	struct platform_device *parent_pdev;
-
-	if (!pdev)
-		return NULL;
-
-	/* Get parent for isi capture device */
-	parent = of_get_parent(dev->of_node);
-	parent_pdev = of_find_device_by_node(parent);
-	if (!parent_pdev) {
-		of_node_put(parent);
-		return NULL;
-	}
-	of_node_put(parent);
-
-	return &parent_pdev->dev;
-}
-
 static irqreturn_t mxc_isi_irq_handler(int irq, void *priv)
 {
 	struct mxc_isi_dev *mxc_isi = priv;
@@ -321,6 +281,8 @@ static void mxc_imx8mn_clk_disable(struct mxc_isi_dev *mxc_isi)
 static struct mxc_isi_chan_src mxc_imx8mn_chan_src = {
 	.src_mipi0 = 0,
 	.src_mipi1 = 1,
+	/* For i.MX8MP */
+	.src_mem = 2,
 };
 
 static struct mxc_isi_dev_ops mxc_imx8mn_clk_ops = {
@@ -575,6 +537,7 @@ static int mxc_isi_remove(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 
+	of_platform_depopulate(dev);
 	pm_runtime_disable(dev);
 
 	return 0;

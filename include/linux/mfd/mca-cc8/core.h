@@ -27,6 +27,8 @@
 #define MCA_CC8X_DRVNAME_TAMPER		"mca-cc8x-tamper"
 #define MCA_CC8X_DRVNAME_COMPARATOR	"mca-cc8x-comparator"
 #define MCA_CC8X_DRVNAME_UART		"mca-cc8x-uart"
+#define MCA_CC8X_DRVNAME_KEYPAD		"mca-cc8x-keypad"
+#define MCA_CC8X_DRVNAME_LED		"mca-cc8x-led"
 
 /* MCA CC8M modules */
 #define MCA_CC8M_DRVNAME_CORE		"mca-cc8m-core"
@@ -38,8 +40,11 @@
 #define MCA_CC8M_DRVNAME_TAMPER		"mca-cc8m-tamper"
 #define MCA_CC8M_DRVNAME_COMPARATOR	"mca-cc8m-comparator"
 #define MCA_CC8M_DRVNAME_UART		"mca-cc8m-uart"
+#define MCA_CC8M_DRVNAME_KEYPAD		"mca-cc8m-keypad"
+#define MCA_CC8M_DRVNAME_LED		"mca-cc8m-led"
 
 #define MCA_CC8_UART_MIN_FW		MCA_MAKE_FW_VER(0, 13)
+#define MCA_CC8_LEDS_MIN_FW		MCA_MAKE_FW_VER(1, 1)
 
 #define MCA_CC8_DEVICE_ID_VAL		0x4A
 
@@ -62,6 +67,7 @@ enum mca_cc8_irqs {
 	MCA_CC8_IRQ_UART0,
 	MCA_CC8_IRQ_UART1,
 	MCA_CC8_IRQ_UART2,
+	MCA_CC8_IRQ_KEYPAD,
 	/* ... */
 
 	MCA_CC8_NUM_IRQS,

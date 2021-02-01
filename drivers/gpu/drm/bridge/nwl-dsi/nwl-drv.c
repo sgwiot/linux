@@ -351,6 +351,10 @@ static void nwl_dsi_bridge_pre_enable(struct drm_bridge *bridge)
 
 	pm_runtime_get_sync(dsi->dev);
 
+	dsi->pdata->dpi_reset(dsi, true);
+	dsi->pdata->mipi_reset(dsi, true);
+	dsi->pdata->pclk_reset(dsi, true);
+
 	if (dsi->lcdif_clk)
 		clk_prepare_enable(dsi->lcdif_clk);
 
@@ -905,7 +909,7 @@ static int imx8mq_dsi_select_input(struct nwl_dsi *dsi)
 	int ret;
 
 	remote = of_graph_get_remote_node(dsi->dev->of_node, 0, 0);
-	if (strcmp(remote->name, "lcdif") == 0)
+	if (remote && strcmp(remote->name, "lcdif") == 0)
 		use_dcss = 0;
 
 	DRM_DEV_INFO(dsi->dev, "Using %s as input source\n",
@@ -1178,17 +1182,19 @@ static int nwl_dsi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	const struct of_device_id *of_id = of_match_device(nwl_dsi_dt_ids, dev);
-	const struct nwl_dsi_platform_data *pdata = of_id->data;
 	const struct soc_device_attribute *attr;
 	struct nwl_dsi *dsi;
 	int ret;
+
+	if (!of_id || !of_id->data)
+		return -ENODEV;
 
 	dsi = devm_kzalloc(dev, sizeof(*dsi), GFP_KERNEL);
 	if (!dsi)
 		return -ENOMEM;
 
 	dsi->dev = dev;
-	dsi->pdata = pdata;
+	dsi->pdata = of_id->data;
 
 	attr = soc_device_match(nwl_dsi_quirks_match);
 	if (attr)

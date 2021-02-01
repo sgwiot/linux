@@ -401,6 +401,10 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6dl-aristainetos_7.dtb \
 	imx6dl-aristainetos2_4.dtb \
 	imx6dl-aristainetos2_7.dtb \
+	imx6dl-ccimx6sbc.dtb \
+	imx6dl-ccimx6sbc-id131.dtb \
+	imx6dl-ccimx6sbc-w.dtb \
+	imx6dl-ccimx6sbc-wb.dtb \
 	imx6dl-colibri-eval-v3.dtb \
 	imx6dl-cubox-i.dtb \
 	imx6dl-cubox-i-emmc-som-v15.dtb \
@@ -439,12 +443,15 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6dl-sabreauto-flexcan1.dtb \
 	imx6dl-sabreauto-ecspi.dtb \
 	imx6dl-sabreauto-gpmi-weim.dtb \
+	imx6dl-sabreauto-pcie.dtb \
 	imx6dl-sabrelite.dtb \
 	imx6dl-sabresd.dtb \
 	imx6dl-sabresd-ldo.dtb \
 	imx6dl-sabresd-btwifi.dtb \
 	imx6dl-sabresd-hdcp.dtb \
 	imx6dl-sabresd-enetirq.dtb \
+	imx6dl-sabresd-pcie.dtb \
+	imx6dl-sabresd-pcie-ep.dtb \
 	imx6dl-savageboard.dtb \
 	imx6dl-ts4900.dtb \
 	imx6dl-ts7970.dtb \
@@ -474,6 +481,12 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-b450v3.dtb \
 	imx6q-b650v3.dtb \
 	imx6q-b850v3.dtb \
+	imx6q-ccimx6sbc.dtb \
+	imx6q-ccimx6sbc-id129.dtb \
+	imx6q-ccimx6sbc-id130.dtb \
+	imx6q-ccimx6sbc-w.dtb \
+	imx6q-ccimx6sbc-wb.dtb \
+	imx6q-ccimx6sbc-wb-ldo-bypass.dtb \
 	imx6q-cm-fx6.dtb \
 	imx6q-cubox-i.dtb \
 	imx6q-cubox-i-emmc-som-v15.dtb \
@@ -526,6 +539,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-sabreauto-flexcan1.dtb \
 	imx6q-sabreauto-ecspi.dtb \
 	imx6q-sabreauto-gpmi-weim.dtb \
+	imx6q-sabreauto-pcie.dtb \
 	imx6q-sabrelite.dtb \
 	imx6q-sabresd.dtb \
 	imx6q-sabresd-ldo.dtb \
@@ -533,6 +547,8 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-sabresd-hdcp.dtb \
 	imx6q-sabresd-uart.dtb \
 	imx6q-sabresd-enetirq.dtb \
+	imx6q-sabresd-pcie.dtb \
+	imx6q-sabresd-pcie-ep.dtb \
 	imx6q-savageboard.dtb \
 	imx6q-sbc6x.dtb \
 	imx6q-tbs2910.dtb \
@@ -554,6 +570,11 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-wandboard-revb1.dtb \
 	imx6q-wandboard-revd1.dtb \
 	imx6q-zii-rdu2.dtb \
+	imx6qp-ccimx6qp-mfg.dtb \
+	imx6qp-ccimx6qp-mfg-rf.dtb \
+	imx6qp-ccimx6qpsbc.dtb \
+	imx6qp-ccimx6qpsbc-id160.dtb \
+	imx6qp-ccimx6qpsbc-wb.dtb \
 	imx6qp-nitrogen6_max.dtb \
 	imx6qp-nitrogen6_som2.dtb \
 	imx6qp-phytec-mira-rdk-nand.dtb \
@@ -565,6 +586,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6qp-sabresd-ldo.dtb \
 	imx6qp-sabresd-btwifi.dtb \
 	imx6qp-sabresd-hdcp.dtb \
+	imx6qp-sabresd-pcie-ep.dtb \
 	imx6qp-tx6qp-8037.dtb \
 	imx6qp-tx6qp-8037-mb7.dtb \
 	imx6qp-tx6qp-8137.dtb \
@@ -595,6 +617,7 @@ dtb-$(CONFIG_SOC_IMX6SX) += \
 	imx6sx-sdb-m4.dtb \
 	imx6sx-sdb-mqs.dtb \
 	imx6sx-sdb-btwifi.dtb \
+	imx6sx-sdb-pcie-ep.dtb \
 	imx6sx-softing-vining-2000.dtb \
 	imx6sx-udoo-neo-basic.dtb \
 	imx6sx-udoo-neo-extended.dtb \
@@ -676,6 +699,8 @@ dtb-$(CONFIG_SOC_IMX7D) += \
 	imx7d-sdb-qspi.dtb \
 	imx7d-sdb-reva.dtb \
 	imx7d-sdb-sht11.dtb \
+	imx7d-sdb-usd-wifi.dtb \
+	imx7d-sdb-pcie-ep.dtb \
 	imx7d-12x12-lpddr3-val.dtb \
 	imx7d-12x12-lpddr3-val-sai.dtb \
 	imx7d-zii-rmu2.dtb \

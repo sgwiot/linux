@@ -36,6 +36,18 @@
 
 	reserved-memory {
 		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			/*
+			 * The Linux code expects to find the "size" property
+			 * in legacy reserved memory nodes. Since this property
+			 * can co-exist with digi,size-table, include it with a
+			 * default value of 96 MB in case the size table can't
+			 * be parsed for whatever reason.
+			 */
+			size = <0 0x6000000>;
+			alloc-ranges = <0 0x96000000 0 0x28000000>;
+			linux,cma-default;
 			digi,size-table = <
 				/* RAM         CMA*/
 				0 0x20000000 0 0x6000000	/* 512 MB variants -> 96 MB of CMA */
@@ -367,6 +379,16 @@
 				status = "disabled";
 			};
 		};
+
+		mca_keypad: keypad {
+			compatible = "digi,mca-keypad";
+			status = "disabled";
+		};
+
+		mca_led: led {
+			compatible = "digi,mca-led";
+			status = "disabled";
+		};
 	};
 };
 
@@ -375,10 +397,26 @@
 	status = "disabled";
 };
 
-/* Disable CPU watchdog 
+/* Disable CPU watchdog */
 &watchdog {
 	status = "disabled";
-};*/
+};
+
+/*
+ * Disable mipi1 lpcg nodes by default, not supported on the DualXZ variants.
+ * An overlay re-enables these nodes if supported by the corresponding variant.
+ */
+&mipi1_lis_lpcg {
+	status = "disabled";
+};
+
+&mipi1_pwm_lpcg {
+	status = "disabled";
+};
+
+&mipi1_i2c0_lpcg {
+	status = "disabled";
+};
 
 &imx8_gpu_ss {
 	/*
@@ -424,14 +462,14 @@
 };
 
 &tsens {
-	tsens-num = <3>;
+	tsens-num = <2>;
 };
 
 &thermal_zones {
 	pmic-thermal0 {
 		polling-delay-passive = <250>;
 		polling-delay = <2000>;
-		thermal-sensors = <&tsens 2>;
+		thermal-sensors = <&tsens 497>;
 		trips {
 			pmic_alert0: trip0 {
 				temperature = <85000>;
@@ -439,7 +477,7 @@
 				type = "passive";
 			};
 			pmic_crit0: trip1 {
-				temperature = <105000>;
+				temperature = <100000>;
 				hysteresis = <2000>;
 				type = "critical";
 			};
@@ -447,7 +485,9 @@
 		cooling-maps {
 			map0 {
 				trip = <&pmic_alert0>;
-				cooling-device = <&A35_0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+				cooling-device =
+					<&A35_0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+					<&A35_1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 			};
 		};
 	};
