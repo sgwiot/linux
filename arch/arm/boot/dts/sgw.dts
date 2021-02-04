@@ -433,8 +433,8 @@
 			fsl,pins = <
 				MX6UL_PAD_LCD_DATA18__USDHC2_CMD    0x17051
                 //Ref imx6ul-pico-hobbit.dts
-				//MX6UL_PAD_LCD_DATA19__USDHC2_CLK    0x10059
-				MX6UL_PAD_LCD_DATA19__USDHC2_CLK    0x17051
+				MX6UL_PAD_LCD_DATA19__USDHC2_CLK    0x10059
+				//MX6UL_PAD_LCD_DATA19__USDHC2_CLK    0x17051
 				MX6UL_PAD_LCD_DATA20__USDHC2_DATA0  0x17051
 				MX6UL_PAD_LCD_DATA21__USDHC2_DATA1  0x17051
 				MX6UL_PAD_LCD_DATA22__USDHC2_DATA2  0x17051
@@ -443,10 +443,9 @@
 		};
 #ifdef WL_REG_3V3
         //For AP6212 from MYC HMI
-		pinctrl_wifi: wifigrp {
+		pinctrl_wifi3v3: wifigrp {
                 fsl,pins = <
-        			//MX6ULL_PAD_SNVS_TAMPER0__GPIO5_IO00     0x03029    /*wifi power*/
-        			MX6UL_PAD_CSI_DATA07__GPIO4_IO28     0x03029    /*wifi power*/
+                    MX6UL_PAD_CSI_DATA04__GPIO4_IO25 0x03029    /*wifi power*/
 
                 >;
         };
@@ -458,8 +457,18 @@
 			//	MX6UL_PAD_GPIO1_IO05__USDHC1_VSELECT	0x17059 /* SD1 VSELECT */
 				MX6UL_PAD_GPIO1_IO00__ANATOP_OTG1_ID	0x17059 /* USB OTG1 ID */
 
-				MX6UL_PAD_SNVS_TAMPER9__GPIO5_IO09	0x1b0b0 /* enet1 reset */
-				MX6UL_PAD_SNVS_TAMPER6__GPIO5_IO06	0x1b0b0 /* enet2 reset */
+                //MX6UL_PAD_GPIO1_IO03__GPIO1_IO03    0x1b0b0
+
+                //Form MYIR Support, both are JTAGS Pin
+                MX6UL_PAD_JTAG_TCK__GPIO1_IO14            0x000070A0
+                MX6UL_PAD_JTAG_TDI__GPIO1_IO13            0x000070A0
+
+                MX6UL_PAD_JTAG_TRST_B__GPIO1_IO15            0x000070A0
+
+                MX6UL_PAD_JTAG_TMS__GPIO1_IO11            0x000070A0
+
+                MX6UL_PAD_JTAG_TDO__GPIO1_IO12            0x000070A0
+                MX6UL_PAD_JTAG_MOD__GPIO1_IO10            0x000070A0
 			>;
 		};
 #if 0
@@ -491,16 +500,6 @@
 
         pinctrl_enet1: enet1grp {
             fsl,pins = <
-                //MX6UL_PAD_GPIO1_IO06__ENET1_MDIO	0x1b0b0
-                //MX6UL_PAD_GPIO1_IO07__ENET1_MDC		0x1b0b0
-                MX6UL_PAD_ENET1_RX_EN__ENET1_RX_EN  0x1b0b0
-                MX6UL_PAD_ENET1_RX_ER__ENET1_RX_ER  0x1b0b0
-                MX6UL_PAD_ENET1_RX_DATA0__ENET1_RDATA00 0x1b0b0
-                MX6UL_PAD_ENET1_RX_DATA1__ENET1_RDATA01 0x1b0b0
-                MX6UL_PAD_ENET1_TX_EN__ENET1_TX_EN  0x1b0b0
-                MX6UL_PAD_ENET1_TX_DATA0__ENET1_TDATA00 0x1b0b0
-                MX6UL_PAD_ENET1_TX_DATA1__ENET1_TDATA01 0x1b0b0
-                MX6UL_PAD_ENET1_TX_CLK__ENET1_REF_CLK1  0x4001b031
             >;
         };
 
@@ -516,40 +515,17 @@
                 MX6UL_PAD_ENET2_TX_DATA0__ENET2_TDATA00 0x1b0b0
                 MX6UL_PAD_ENET2_TX_DATA1__ENET2_TDATA01 0x1b0b0
                 MX6UL_PAD_ENET2_TX_CLK__ENET2_REF_CLK2  0x4001b031
+                MX6UL_PAD_ENET1_RX_EN__ENET1_RX_EN  0x1b0b0
+                MX6UL_PAD_ENET1_RX_ER__ENET1_RX_ER  0x1b0b0
+                MX6UL_PAD_ENET1_RX_DATA0__ENET1_RDATA00 0x1b0b0
+                MX6UL_PAD_ENET1_RX_DATA1__ENET1_RDATA01 0x1b0b0
+                MX6UL_PAD_ENET1_TX_EN__ENET1_TX_EN  0x1b0b0
+                MX6UL_PAD_ENET1_TX_DATA0__ENET1_TDATA00 0x1b0b0
+                MX6UL_PAD_ENET1_TX_DATA1__ENET1_TDATA01 0x1b0b0
+                MX6UL_PAD_ENET1_TX_CLK__ENET1_REF_CLK1  0x4001b031
             >;
         };
 
-        /*
-		pinctrl_enet1: enet1grp {
-			fsl,pins = <
-				MX6UL_PAD_GPIO1_IO06__ENET1_MDIO	0x1b0b0
-				MX6UL_PAD_GPIO1_IO07__ENET1_MDC		0x1b0b0
-				MX6UL_PAD_ENET1_RX_EN__ENET1_RX_EN	0x1b0b0
-				MX6UL_PAD_ENET1_RX_ER__ENET1_RX_ER	0x1b0b0
-				MX6UL_PAD_ENET1_RX_DATA0__ENET1_RDATA00	0x1b0b0
-				MX6UL_PAD_ENET1_RX_DATA1__ENET1_RDATA01	0x1b0b0
-				MX6UL_PAD_ENET1_TX_EN__ENET1_TX_EN	0x1b0b0
-				MX6UL_PAD_ENET1_TX_DATA0__ENET1_TDATA00	0x1b0b0
-				MX6UL_PAD_ENET1_TX_DATA1__ENET1_TDATA01	0x1b0b0
-				MX6UL_PAD_ENET1_TX_CLK__ENET1_REF_CLK1	0x4001b031
-			>;
-		};
-
-		pinctrl_enet2: enet2grp {
-			fsl,pins = <
-				MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b0b0
-				MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x1b0b0
-				MX6UL_PAD_ENET2_RX_EN__ENET2_RX_EN	0x1b0b0
-				MX6UL_PAD_ENET2_RX_ER__ENET2_RX_ER	0x1b0b0
-				MX6UL_PAD_ENET2_RX_DATA0__ENET2_RDATA00	0x1b0b0
-				MX6UL_PAD_ENET2_RX_DATA1__ENET2_RDATA01	0x1b0b0
-				MX6UL_PAD_ENET2_TX_EN__ENET2_TX_EN	0x1b0b0
-				MX6UL_PAD_ENET2_TX_DATA0__ENET2_TDATA00	0x1b0b0
-				MX6UL_PAD_ENET2_TX_DATA1__ENET2_TDATA01	0x1b0b0
-				MX6UL_PAD_ENET2_TX_CLK__ENET2_REF_CLK2	0x4001b031
-			>;
-		};
-        */
 		pinctrl_flexcan2: flexcan2grp{
 			fsl,pins = <
 				MX6UL_PAD_UART2_RTS_B__FLEXCAN2_RX	0x1b020
@@ -1179,7 +1155,7 @@
     vmmc-supply = <&reg_brcm>;
     //mmc-pwrseq = <&usdhc2_pwrseq>;
 
-#if 0
+#if 1
     brcmf: wifi@1 {
         //reg = <1>;
         compatible = "brcm,bcm4329-fmac";
